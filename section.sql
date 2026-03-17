@@ -36,7 +36,7 @@ CREATE TABLE `section` (
   `building` varchar(15) DEFAULT NULL,
   `room_number` varchar(7) DEFAULT NULL,
   `time_slot_id` varchar(4) DEFAULT NULL,
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8;
+) ;
 
 --
 -- 傾印資料表的資料 `section`
