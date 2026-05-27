@@ -1,1 +1,7 @@
+**/__pycache__/
+*.pyc
 不揪ㄛ.docx
+.venv/
+db.sqlite3
+backend/db.sqlite3
+
