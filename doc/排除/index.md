@@ -12,7 +12,7 @@
 - 詳細說明 Haversine 地理篩選、天氣指數、免費場地超時確認與自動候補轉正等核心演算法。
 
 ### 2. 🗄️ [資料庫設計文件 (Database Design)](database.md)
-- 對齊專案最新版之 [nojo525.sql](file:///c:/Users/cyhs1/OneDrive/桌面/明和/cgu/資料庫/database_project/db/nojo525.sql) 結構。
+- 對齊專案最新版之 [nojo528.sql](file:///c:/Users/cyhs1/OneDrive/桌面/明和/cgu/資料庫/database_project/db/nojo528.sql) 結構。
 - 提供完整系統的 Entity-Relationship Diagram (ERD) 關係圖。
 - 詳細說明 17 張資料表的完整欄位屬性、資料型態、索引與外鍵級聯操作約束。
 

@@ -4,4 +4,11 @@
 .venv/
 db.sqlite3
 backend/db.sqlite3
+backend/env
+
+# Log files and test outputs
+*.log
+api_test_output.log
+test_output.txt
+
 

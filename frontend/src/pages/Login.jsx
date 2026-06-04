@@ -10,6 +10,11 @@ function Login() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('請輸入有效的電子郵件格式！');
+      return;
+    }
     console.log('Login attempt:', { email, password, role });
     // TODO: Connect to backend API
     // 模擬登入成功後跳轉
@@ -47,12 +52,12 @@ function Login() {
         
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label" htmlFor="email">電子信箱 / 帳號</label>
+            <label className="form-label" htmlFor="email">電子信箱</label>
             <input
               id="email"
-              type="text"
+              type="email"
               className="form-input"
-              placeholder="輸入你的信箱或帳號"
+              placeholder="輸入你的信箱"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required

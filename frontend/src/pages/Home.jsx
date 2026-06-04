@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CloudSun, MapPin, Clock } from 'lucide-react';
+import { CloudSun, MapPin, Clock, Bell, HelpCircle } from 'lucide-react';
 import '../App.css';
 
 function Home() {
@@ -13,6 +13,16 @@ function Home() {
     { id: 3, title: '下班輕鬆打羽球', type: '羽球', level: '新手', time: '明天 19:00', location: '桃園市桃園區 桃園國民運動中心', facilities: ['冷氣', '飲水機', '廁所', '淋浴間'], currentPlayers: 2, maxPlayers: 4, currentWaitlist: 0, maxWaitlist: 2, participants: ['羽球控', '小白'], waitlist: [] },
     { id: 4, title: '週末休閒打桌球', type: '桌球', level: '休閒', time: '週日 10:00', location: '桃園市平鎮區 平鎮國民運動中心', facilities: ['冷氣', '飲水機', '廁所', '淋浴間'], currentPlayers: 1, maxPlayers: 2, currentWaitlist: 0, maxWaitlist: 2, participants: ['桌球大師'], waitlist: [] },
     { id: 5, title: '虎頭山排球友誼賽', type: '排球', level: '休閒', time: '週六 16:00', location: '桃園市龜山區 桃園虎頭山公園', facilities: ['廁所'], currentPlayers: 12, maxPlayers: 12, currentWaitlist: 2, maxWaitlist: 2, participants: ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12'], waitlist: ['W1', 'W2'] },
+  ]);
+
+  const [reputationScore, setReputationScore] = useState(100); // 模擬信譽分數
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showAqiInfo, setShowAqiInfo] = useState(false);
+  const [notifications, setNotifications] = useState([
+    { id: 1, text: '你報名的「歡樂衛生麻將局」場地已確認！', time: '10 分鐘前', read: false },
+    { id: 2, text: '⏰ 系統提醒：你報名的「今晚巨蛋鬥牛」即將在 1 小時後開始，請準備出發！', time: '12 分鐘前', read: false },
+    { id: 3, text: '📅 系統提醒：你報名的「週末休閒打桌球」將在明天開始，請記得準時出席喔！', time: '1 小時前', read: true },
+    { id: 4, text: '系統提醒：主揪更新了揪團注意事項', time: '2 小時前', read: true }
   ]);
 
   // 台灣行政區與球場資料 (縣市 -> 區域 -> 球場)
@@ -84,7 +94,8 @@ function Home() {
   const [newParty, setNewParty] = useState({ 
     title: '', 
     type: '籃球', 
-    level: '休閒', 
+    level: '不限', 
+    genderLimit: '不限',
     city: '桃園市', 
     district: '桃園區', 
     venue: '桃園國民運動中心',
@@ -132,6 +143,7 @@ function Home() {
       title: newParty.title,
       type: newParty.type,
       level: newParty.level,
+      genderLimit: newParty.genderLimit,
       time: newParty.time.replace('T', ' '),
       duration: newParty.duration,
       location: fullLocation,
@@ -151,7 +163,8 @@ function Home() {
     setNewParty({ 
       title: '', 
       type: '籃球', 
-      level: '休閒', 
+      level: '不限', 
+      genderLimit: '不限',
       city: '桃園市', 
       district: '桃園區', 
       venue: '桃園國民運動中心',
@@ -193,7 +206,58 @@ function Home() {
       {/* 導覽列 */}
       <nav className="navbar">
         <div className="navbar-logo">不揪ㄛ</div>
-        <div className="navbar-actions">
+        <div className="navbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn-outline" 
+              style={{ position: 'relative', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onClick={() => setShowNotifications(!showNotifications)}
+            >
+              <Bell size={18} color="#475569" />
+              {notifications.some(n => !n.read) && (
+                <span style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#ef4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>
+              )}
+            </button>
+            
+            {/* 通知中心下拉選單 */}
+            {showNotifications && (
+              <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  通知中心
+                  <span 
+                    style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
+                    onClick={() => setNotifications(notifications.map(n => ({...n, read: true})))}
+                  >
+                    全部標示為已讀
+                  </span>
+                </div>
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {notifications.length > 0 ? (
+                    notifications.map(n => (
+                      <div 
+                        key={n.id} 
+                        style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff' }}
+                        onClick={() => {
+                          setNotifications(notifications.map(item => item.id === n.id ? {...item, read: true} : item));
+                        }}
+                      >
+                        <div style={{ width: '8px', display: 'flex', justifyContent: 'center', paddingTop: '6px' }}>
+                          {!n.read && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0284c7' }}></div>}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>{n.text}</p>
+                          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{n.time}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>目前沒有新通知</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button className="btn-outline" onClick={() => setIsFeedbackOpen(true)}>意見回饋</button>
           <button className="btn-primary" onClick={() => navigate('/profile')}>個人</button>
           <button className="btn-outline" onClick={handleLogout}>登出</button>
@@ -207,7 +271,53 @@ function Home() {
             <h2 style={{ marginBottom: 0 }}>揪團大廳</h2>
             <div className="weather-widget">
               <span className="weather-icon" style={{ display: 'flex' }}><CloudSun size={18} /></span>
-              <span>桃園市 26°C 適合運動的好天氣</span>
+              <span>桃園市 26°C</span>
+              <div 
+                style={{ position: 'relative', marginLeft: '8px', paddingLeft: '12px', borderLeft: '1px solid #cbd5e1', color: '#64748b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
+                onMouseEnter={() => setShowAqiInfo(true)}
+                onMouseLeave={() => setShowAqiInfo(false)}
+              >
+                <span>空氣品質 (AQI)：45</span>
+                <HelpCircle size={14} style={{ cursor: 'pointer', color: '#94a3b8' }} />
+                
+                {showAqiInfo && (
+                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '8px', width: '360px', backgroundColor: '#1e293b', color: 'white', padding: '16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'normal', zIndex: 10, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', lineHeight: '1.5', cursor: 'default' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '16px' }}>空氣品質指標 (AQI) 與建議</div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', marginBottom: '8px', color: '#94a3b8', fontSize: '13px' }}>
+                      <div>AQI 區間</div>
+                      <div>空氣品質</div>
+                      <div>活動建議</div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
+                      <div>0 - 50</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#22c55e', fontSize: '14px', lineHeight: '1' }}>●</span> 良好</div>
+                      <div style={{ color: '#e2e8f0' }}>空氣品質極佳，非常適合戶外活動。</div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
+                      <div>51 - 100</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#eab308', fontSize: '14px', lineHeight: '1' }}>●</span> 普通</div>
+                      <div style={{ color: '#e2e8f0' }}>空氣品質尚可，極少數敏感族群可能產生症狀。</div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
+                      <div>101 - 150</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#f97316', fontSize: '14px', lineHeight: '1' }}>●</span> 敏感族群<br/>不健康</div>
+                      <div style={{ color: '#e2e8f0' }}>敏感族群可能會產生健康影響，應減少戶外劇烈活動。</div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
+                      <div>151 - 200</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#ef4444', fontSize: '14px', lineHeight: '1' }}>●</span> 所有族群<br/>不健康</div>
+                      <div style={{ color: '#e2e8f0' }}>對所有人的健康開始產生影響，應減少戶外活動。</div>
+                    </div>
+                    
+                    <div style={{ position: 'absolute', top: '-4px', left: '50%', transform: 'translateX(-50%)', width: '8px', height: '8px', backgroundColor: '#1e293b', borderRadius: '2px', rotate: '45deg' }}></div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -257,6 +367,9 @@ function Home() {
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <span className="party-type">{party.type}</span>
                     <span className="party-level">{party.level}</span>
+                    {party.genderLimit && party.genderLimit !== '不限' && (
+                      <span className="party-level">{party.genderLimit}</span>
+                    )}
                   </div>
                   <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
                 </div>
@@ -271,7 +384,7 @@ function Home() {
                     e.stopPropagation();
                     navigate(`/party/${party.id}`, { state: { party } });
                   }}>
-                    {isFull && isWaitlistFull ? '查看詳情' : isFull ? '排候補' : '報名參加'}
+                    {party.participants[0] === '我 (主揪)' || party.participants[0] === '主揪人' ? '管理' : isFull && isWaitlistFull ? '查看詳情' : isFull ? '排候補' : '報名參加'}
                   </button>
                 </div>
               </div>
@@ -282,7 +395,13 @@ function Home() {
 
       {/* 右下角浮動發起按鈕 */}
       <div className="fab-container">
-        <button className="fab-btn" onClick={() => setIsModalOpen(true)}>
+        <button className="fab-btn" onClick={() => {
+          if (reputationScore <= 60) {
+            alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
+            return;
+          }
+          setIsModalOpen(true);
+        }}>
           <span className="fab-icon">+</span>
           發起揪團
         </button>
@@ -291,10 +410,9 @@ function Home() {
       {/* 發起揪團 Modal */}
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px' }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3>發起新揪團</h3>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleCreateParty}>
               <div className="form-group">
@@ -321,7 +439,16 @@ function Home() {
                       <option value="新手">新手</option>
                       <option value="休閒">休閒</option>
                       <option value="高手">高手</option>
+                      <option value="不限">不限</option>
                     </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">性別限制</label>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">活動時間</label>
@@ -376,7 +503,10 @@ function Home() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                 <div className="form-group">
-                  <label className="form-label">人數需求 (最少 ~ 最多)</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    人數需求 (最少 ~ 最多)
+                  </label>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>* 請填寫包含主揪在內的總人數！</div>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <input required type="number" min="1" max="20" className="form-input" value={newParty.minPlayers} onChange={e => setNewParty({...newParty, minPlayers: e.target.value})} />
                     <span style={{ color: '#64748b' }}>~</span>

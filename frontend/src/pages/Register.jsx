@@ -11,6 +11,11 @@ function Register() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('請輸入有效的電子郵件格式！');
+      return;
+    }
     if (password !== confirmPassword) {
       alert('兩次密碼輸入不一致喔！');
       return;
@@ -43,10 +48,10 @@ function Register() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="email">電子信箱 / 帳號 <span style={{ color: '#ef4444' }}>(必填)</span></label>
+            <label className="form-label" htmlFor="email">電子信箱 <span style={{ color: '#ef4444' }}>(必填)</span></label>
             <input
               id="email"
-              type="text"
+              type="email"
               className="form-input"
               placeholder="輸入你的信箱"
               value={email}

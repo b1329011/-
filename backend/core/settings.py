@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ SECRET_KEY = 'django-insecure-!#8^d=@b09*&yf+_&8c$z9t(tfwhvossgf@d!k=$6gu#j9++o-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
     'api_v1',
@@ -45,6 +47,7 @@ INSTALLED_APPS = [
 AUTH_USER_MODEL = 'api_v1.User'
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -77,12 +80,79 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+import socket
+
+def check_mysql_availability(host='127.0.0.1', port=3306, timeout=1.0):
+    """
+    Check if MySQL driver is installed and if the port is open.
+    """
+    # 1. Check if MySQL driver is installed
+    mysql_driver_installed = False
+    try:
+        import pymysql
+        pymysql.install_as_MySQLdb()
+        mysql_driver_installed = True
+    except ImportError:
+        try:
+            import MySQLdb
+            mysql_driver_installed = True
+        except ImportError:
+            pass
+
+    if not mysql_driver_installed:
+        return False, "MySQL driver (pymysql or mysqlclient) is not installed"
+
+    # 2. Check if the port is open
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True, "MySQL port is open"
+    except (socket.timeout, ConnectionRefusedError, OSError) as e:
+        return False, f"MySQL port {port} is not accessible: {e}"
+
+# Check MySQL status
+import os
+mysql_available, reason = check_mysql_availability()
+if os.environ.get('FORCE_SQLITE') == 'True':
+    mysql_available = False
+    reason = "Forced by FORCE_SQLITE environment variable"
+
+if mysql_available:
+    print("[Database] MySQL detected! Using MySQL database ('nojo').")
+    
+    # 繞過 MariaDB 10.5+ 版本限制以相容 XAMPP (MariaDB 10.4.32)
+    from django.db.backends.base.base import BaseDatabaseWrapper
+    BaseDatabaseWrapper.check_database_version_supported = lambda self: None
+    
+    # 解決 MariaDB 10.4.x 不支援 RETURNING 語法導致新增資料報錯的問題
+    from django.db.backends.mysql.features import DatabaseFeatures
+    DatabaseFeatures.can_return_columns_from_insert = property(
+        lambda self: self.connection.mysql_is_mariadb and self.connection.mysql_version >= (10, 5, 0)
+    )
+    
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'nojo',
+            'USER': 'root',
+            'PASSWORD': '',
+            'HOST': '127.0.0.1',
+            'PORT': '3306',
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            }
+        }
     }
-}
+
+
+else:
+    print(f"[Database] Fallback to SQLite (Reason: {reason}).")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
 
 
 # Password validation
@@ -130,3 +200,13 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "ngrok-skip-browser-warning",
+]
+

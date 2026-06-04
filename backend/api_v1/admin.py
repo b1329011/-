@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
     CourtConflict, GameMatch, MatchParticipant, MatchWaitlist,
     FavoriteGame, FavoriteVenue, PenaltyRule, Report, Blacklist,
-    UserAvailability, Notification, WeatherData
+    UserAvailability, Notification, WeatherData, Feedback, Announcement
 )
 
 @admin.register(User)
@@ -37,13 +37,13 @@ class FacilityAdmin(admin.ModelAdmin):
 
 @admin.register(Venue)
 class VenueAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'address', 'base_price', 'types')
+    list_display = ('id', 'name', 'address', 'types')
     list_filter = ('types',)
     search_fields = ('name',)
 
 @admin.register(Court)
 class CourtAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'venue', 'occupied')
+    list_display = ('id', 'name', 'venue', 'occupied', 'base_price')
     list_filter = ('venue', 'occupied')
 
 @admin.register(CourtConflict)
@@ -68,7 +68,7 @@ class MatchWaitlistAdmin(admin.ModelAdmin):
 
 @admin.register(FavoriteGame)
 class FavoriteGameAdmin(admin.ModelAdmin):
-    list_display = ('user', 'match', 'created_at')
+    list_display = ('user', 'match')
 
 @admin.register(FavoriteVenue)
 class FavoriteVenueAdmin(admin.ModelAdmin):
@@ -80,8 +80,8 @@ class PenaltyRuleAdmin(admin.ModelAdmin):
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ('reporter', 'offender', 'reason', 'status', 'created_at')
-    list_filter = ('status', 'reason')
+    list_display = ('reporter', 'offender', 'status')
+    list_filter = ('status',)
     search_fields = ('reporter__name', 'offender__name')
 
 @admin.register(Blacklist)
@@ -95,10 +95,20 @@ class UserAvailabilityAdmin(admin.ModelAdmin):
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'title', 'is_read', 'created_at')
+    list_display = ('match', 'message', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
 
 @admin.register(WeatherData)
 class WeatherDataAdmin(admin.ModelAdmin):
     list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
     list_filter = ('city',)
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    list_display = ('user', 'type', 'created_at')
+    list_filter = ('type', 'created_at')
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ('title', 'created_at')
+    list_filter = ('created_at',)

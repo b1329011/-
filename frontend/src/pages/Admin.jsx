@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain } from 'lucide-react';
+import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle } from 'lucide-react';
 import '../App.css';
 
 function Admin() {
@@ -16,9 +16,9 @@ function Admin() {
 
   // 模擬揪團房間資料 (用於 Demo 工具)
   const [parties, setParties] = useState([
-    { id: 1, title: '今晚巨蛋鬥牛', status: '招募中', time: '今日 20:00' },
-    { id: 2, title: '假日缺一咖打牌', status: '招募中', time: '本週六 14:00' },
-    { id: 3, title: '下班輕鬆打羽球', status: '招募中', time: '明日 19:00' },
+    { id: 1, title: '今晚巨蛋鬥牛', status: '招募中', time: '今日 20:00', location: '桃園市桃園區 桃園巨蛋室外籃球場' },
+    { id: 2, title: '假日缺一咖打牌', status: '招募中', time: '本週六 14:00', location: '桃園市中壢區 中壢車站附近桌遊店' },
+    { id: 3, title: '下班輕鬆打羽球', status: '招募中', time: '明日 19:00', location: '桃園市桃園區 桃園國民運動中心' },
   ]);
 
   // 模擬公告資料
@@ -29,9 +29,9 @@ function Admin() {
 
   // 模擬使用者回饋資料
   const [feedbacks, setFeedbacks] = useState([
-    { id: 1, user: '運動愛好者', type: '建議', content: '希望可以增加羽球的場地篩選功能。', date: '2026-05-25' },
-    { id: 2, user: '小白', type: '錯誤', content: '在手機版瀏覽時，發起按鈕有時候會擋到文字。', date: '2026-05-25' },
-    { id: 3, user: '羽球控', type: '場地', content: '桃園運動中心的淋浴間最近在維修喔，建議更新資訊。', date: '2026-05-24' },
+    { id: 1, user: '運動愛好者', type: '建議', content: '希望可以增加羽球的場地篩選功能。', date: '2026-05-25', is_handled: false },
+    { id: 2, user: '小白', type: '錯誤', content: '在手機版瀏覽時，發起按鈕有時候會擋到文字。', date: '2026-05-25', is_handled: false },
+    { id: 3, user: '羽球控', type: '場地', content: '桃園運動中心的淋浴間最近在維修喔，建議更新資訊。', date: '2026-05-24', is_handled: false },
   ]);
 
   const [newVenue, setNewVenue] = useState({ name: '', city: '桃園市', district: '', facilities: '' });
@@ -83,8 +83,22 @@ function Admin() {
   };
 
   const handleDeleteVenue = (id) => {
-    if (window.confirm('確定要刪除此場地嗎？')) {
-      setVenues(venues.filter(v => v.id !== id));
+    const venueToDelete = venues.find(v => v.id === id);
+    if (!venueToDelete) return;
+
+    // 檢查是否有正在進行中的揪團使用此場地
+    const isVenueInUse = parties.some(p => p.location && p.location.includes(venueToDelete.name));
+    
+    if (isVenueInUse) {
+      alert(`無法刪除！目前有揪團正在使用「${venueToDelete.name}」。\n請先確保該場地無人使用後再嘗試刪除。`);
+      return;
+    }
+
+    if (window.confirm(`確定要刪除場地「${venueToDelete.name}」嗎？`)) {
+      if (window.confirm('請再次確認，刪除後將無法復原！確定要刪除嗎？')) {
+        setVenues(venues.filter(v => v.id !== id));
+        alert('場地已成功刪除。');
+      }
     }
   };
 
@@ -354,7 +368,7 @@ function Admin() {
             <h2 style={{ marginBottom: '32px' }}>使用者建議與回饋</h2>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {feedbacks.map(f => (
+              {feedbacks.filter(f => !f.is_handled).map(f => (
                 <div key={f.id} style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -380,19 +394,16 @@ function Admin() {
                   <p style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6', paddingLeft: '52px' }}>
                     {f.content}
                   </p>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '12px' }}>
-                    <button className="btn-outline" style={{ padding: '6px 16px', fontSize: '13px' }} onClick={() => alert('已標記為處理中')}>標記處理</button>
-                    <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} onClick={() => {
-                      if(window.confirm('確定要刪除這條回饋嗎？')) {
-                        setFeedbacks(feedbacks.filter(fb => fb.id !== f.id));
-                      }
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '12px', alignItems: 'center' }}>
+                    <button style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700' }} onClick={() => {
+                      setFeedbacks(feedbacks.map(fb => fb.id === f.id ? { ...fb, is_handled: true } : fb));
                     }}>
-                      <Trash2 size={18} />
+                      <CheckCircle size={18} /> 標記完成
                     </button>
                   </div>
                 </div>
               ))}
-              {feedbacks.length === 0 && (
+              {feedbacks.filter(f => !f.is_handled).length === 0 && (
                 <div style={{ textAlign: 'center', padding: '100px', color: '#94a3b8' }}>
                   目前沒有待處理的回饋。
                 </div>
