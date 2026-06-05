@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- 主機: localhost
--- 產生時間： 2026-06-02 05:43:07
+-- 產生時間： 2026-06-03 10:11:13
 -- 伺服器版本: 5.7.17-log
 -- PHP 版本： 5.6.30
 
@@ -76,7 +76,15 @@ INSERT INTO `address` (`address_id`, `city`, `district`, `street_line`) VALUES
 (36, '桃園市', '龜山區', '桃園市龜山區文安街與文光街交叉口'),
 (37, '桃園市', '龜山區', '桃園市龜山區萬壽路一段383號後方'),
 (38, '桃園市', '龜山區', '桃園市假日花市'),
-(39, '桃園市', '龜山區', '桃園市龜山區自強西路66號');
+(39, '桃園市', '龜山區', '桃園市龜山區自強西路66號'),
+(40, '桃園市', '龜山區', '333桃園市龜山區文化里文化三路395號'),
+(41, '桃園市', '龜山區', '333桃園市龜山區大同里德明路133號'),
+(42, '桃園市', '龜山區', '333桃園市龜山區文化里復興一路212巷32號'),
+(43, '桃園市', '龜山區', '333桃園市龜山區文青里樂善一路7號'),
+(44, '桃園市', '龜山區', '333桃園市龜山區迴龍里萬壽路一段155號'),
+(45, '桃園市', '龜山區', '33381桃園市龜山區大華里文化三路552號1樓'),
+(46, '桃園市', '龜山區', '333桃園市龜山區新興里自強南路281號'),
+(47, '桃園市', '龜山區', '33348桃園市龜山區大同里德明路87號');
 
 -- --------------------------------------------------------
 
@@ -172,7 +180,81 @@ INSERT INTO `court` (`court_id`, `venue_id`, `occupied`, `base_price`) VALUES
 (61, 48, 0, NULL),
 (62, 49, 0, NULL),
 (63, 50, 0, NULL),
-(64, 51, 0, NULL);
+(64, 51, 0, NULL),
+(65, 52, 0, NULL),
+(66, 52, 0, NULL),
+(67, 52, 0, NULL),
+(68, 52, 0, NULL),
+(69, 52, 0, NULL),
+(70, 52, 0, NULL),
+(71, 52, 0, NULL),
+(72, 52, 0, NULL),
+(73, 52, 0, NULL),
+(74, 52, 0, NULL),
+(75, 52, 0, NULL),
+(76, 52, 0, NULL),
+(77, 52, 0, NULL),
+(78, 53, 0, NULL),
+(79, 53, 0, NULL),
+(80, 53, 0, NULL),
+(81, 53, 0, NULL),
+(82, 53, 0, NULL),
+(83, 53, 0, NULL),
+(84, 53, 0, NULL),
+(85, 53, 0, NULL),
+(86, 53, 0, NULL),
+(87, 53, 0, NULL),
+(88, 54, 0, NULL),
+(89, 54, 0, NULL),
+(90, 54, 0, NULL),
+(91, 54, 0, NULL),
+(92, 54, 0, NULL),
+(93, 54, 0, NULL),
+(94, 54, 0, NULL),
+(95, 54, 0, NULL),
+(96, 54, 0, NULL),
+(97, 54, 0, NULL),
+(98, 55, 0, NULL),
+(99, 55, 0, NULL),
+(100, 55, 0, NULL),
+(101, 55, 0, NULL),
+(102, 55, 0, NULL),
+(103, 55, 0, NULL),
+(104, 56, 0, NULL),
+(105, 56, 0, NULL),
+(106, 56, 0, NULL),
+(107, 56, 0, NULL),
+(108, 56, 0, NULL),
+(109, 56, 0, NULL),
+(110, 56, 0, NULL),
+(111, 56, 0, NULL),
+(112, 57, 0, NULL),
+(113, 57, 0, NULL),
+(114, 57, 0, NULL),
+(115, 57, 0, NULL),
+(116, 57, 0, NULL),
+(117, 57, 0, NULL),
+(118, 57, 0, NULL),
+(119, 58, 0, NULL),
+(120, 58, 0, NULL),
+(121, 58, 0, NULL),
+(122, 58, 0, NULL),
+(123, 58, 0, NULL),
+(124, 58, 0, NULL),
+(125, 58, 0, NULL),
+(126, 58, 0, NULL),
+(127, 58, 0, NULL),
+(128, 59, 0, NULL),
+(129, 59, 0, NULL),
+(130, 59, 0, NULL),
+(131, 59, 0, NULL),
+(132, 59, 0, NULL),
+(133, 59, 0, NULL),
+(134, 59, 0, NULL),
+(135, 59, 0, NULL),
+(136, 59, 0, NULL),
+(137, 59, 0, NULL),
+(138, 59, 0, NULL);
 
 -- --------------------------------------------------------
 
@@ -266,7 +348,81 @@ INSERT INTO `court_sports` (`court_id`, `sport_id`) VALUES
 (25, 3),
 (28, 3),
 (29, 3),
-(54, 3);
+(54, 3),
+(65, 4),
+(66, 4),
+(67, 4),
+(68, 4),
+(69, 4),
+(70, 4),
+(71, 4),
+(72, 4),
+(73, 4),
+(74, 4),
+(75, 4),
+(76, 4),
+(77, 4),
+(78, 4),
+(79, 4),
+(80, 4),
+(81, 4),
+(82, 4),
+(83, 4),
+(84, 4),
+(85, 4),
+(86, 4),
+(87, 4),
+(88, 4),
+(89, 4),
+(90, 4),
+(91, 4),
+(92, 4),
+(93, 4),
+(94, 4),
+(95, 4),
+(96, 4),
+(97, 4),
+(98, 4),
+(99, 4),
+(100, 4),
+(101, 4),
+(102, 4),
+(103, 4),
+(104, 4),
+(105, 4),
+(106, 4),
+(107, 4),
+(108, 4),
+(109, 4),
+(110, 4),
+(111, 4),
+(112, 4),
+(113, 4),
+(114, 4),
+(115, 4),
+(116, 4),
+(117, 4),
+(118, 4),
+(119, 4),
+(120, 4),
+(121, 4),
+(122, 4),
+(123, 4),
+(124, 4),
+(125, 4),
+(126, 4),
+(127, 4),
+(128, 4),
+(129, 4),
+(130, 4),
+(131, 4),
+(132, 4),
+(133, 4),
+(134, 4),
+(135, 4),
+(136, 4),
+(137, 4),
+(138, 4);
 
 -- --------------------------------------------------------
 
@@ -311,11 +467,11 @@ CREATE TABLE `gamesmatches` (
   `total_price` decimal(10,2) DEFAULT NULL,
   `deposit_required` tinyint(1) NOT NULL DEFAULT '0',
   `cancel_deadline` timestamp NULL DEFAULT NULL,
-  `is_confirmed` tinyint(1) NOT NULL DEFAULT '0',
-  `booking_status` enum('pending','booked','cancelled') NOT NULL DEFAULT 'pending',
-  `gender_limit` varchar(10) NOT NULL DEFAULT '不限' COMMENT '性別限制 (不限/限男/限女)',
-  `venue_status` varchar(20) NOT NULL DEFAULT '未確認' COMMENT '佔場確認狀態',
-  `venue_note` text COMMENT '佔場位置或衣服說明備註'
+  `booking_status` enum('已佔到/已預約','未佔到/未預約','未確認') NOT NULL DEFAULT '未佔到/未預約',
+  `gender_limit` enum('不限','限男','限女') NOT NULL DEFAULT '不限',
+  `game_note` text COMMENT '佔場位置或衣服說明備註',
+  `布告欄` text,
+  `game_name` varchar(100) NOT NULL COMMENT '比賽名稱'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
@@ -440,10 +596,25 @@ CREATE TABLE `users` (
   `credit_point` int(11) NOT NULL DEFAULT '100',
   `phone` varchar(20) DEFAULT NULL,
   `birth_date` date DEFAULT NULL,
-  `gender` varchar(10) DEFAULT NULL COMMENT '性別 (男/女)',
+  `gender` enum('男','女','其他','不願透漏') NOT NULL,
   `avatar_url` varchar(255) DEFAULT NULL COMMENT '頭貼網址',
-  `bio` text COMMENT '個人簡介'
+  `bio` text COMMENT '個人簡介',
+  `password` varchar(255) NOT NULL,
+  `line_id` varchar(50) DEFAULT NULL COMMENT 'LINE ID',
+  `instagram` varchar(50) DEFAULT NULL COMMENT 'Instagram 帳號',
+  `email` varchar(255) DEFAULT NULL COMMENT '電子郵件'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- 資料表的匯出資料 `users`
+--
+
+INSERT INTO `users` (`user_id`, `role`, `name`, `credit_point`, `phone`, `birth_date`, `gender`, `avatar_url`, `bio`, `password`, `line_id`, `instagram`, `email`) VALUES
+(1, 'admin', '楊鑫', 999, '0912345678', '2006-04-17', '男', NULL, '韓德利克森', '12345678', NULL, NULL, NULL),
+(2, 'admin', '林明和', 999, '0923456789', '2026-07-11', '男', NULL, '阿葛力搏依', '12345678', NULL, NULL, NULL),
+(3, 'admin', '陳涵林', 999, '0934567890', '2026-06-25', '女', NULL, NULL, '12345678', NULL, NULL, NULL),
+(4, 'admin', '簡律', 999, '0945678901', '2025-10-11', '女', NULL, NULL, '', NULL, NULL, NULL),
+(5, 'admin', '李偲伃', 999, '0956789012', '2026-03-05', '女', NULL, 'SB', '', NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -529,7 +700,15 @@ INSERT INTO `venues` (`venue_id`, `address_id`, `name`, `opening_hours`, `types`
 (48, 36, '樂善公園', '{\"opening\": [{\"days\": \"星期一、星期二、星期三、星期四、星期五、星期六、星期日\", \"time\": null, \"category\": \"籃球場\", \"court_ref\": \"籃球場\"}]}', NULL, '25.05523486', '121.38071360'),
 (49, 37, '迴龍加油站後', '{\"opening\": [{\"days\": \"星期一、星期二、星期三、星期四、星期五、星期六、星期日\", \"time\": null, \"category\": \"籃球場\", \"court_ref\": \"籃球場\"}]}', NULL, '25.01638657', '121.40242880'),
 (50, 38, '桃園市成功橋下運動暨休憩空間', '{\"opening\": [{\"days\": \"星期一、星期二、星期三、星期四、星期五、星期六、星期日\", \"time\": \"無\", \"category\": \"羽球場(館)\", \"court_ref\": \"羽球場(館)\"}]}', NULL, '24.99606922', '121.32514360'),
-(51, 39, '龜山國中籃球場', '{\"opening\": [{\"days\": \"星期一、星期二、星期三、星期四、星期五、星期六\", \"time\": null, \"category\": \"籃球場\", \"court_ref\": \"籃球場\"}]}', NULL, '24.99733819', '121.33889260');
+(51, 39, '龜山國中籃球場', '{\"opening\": [{\"days\": \"星期一、星期二、星期三、星期四、星期五、星期六\", \"time\": null, \"category\": \"籃球場\", \"court_ref\": \"籃球場\"}]}', NULL, '24.99733819', '121.33889260'),
+(52, 40, '大三元麻將24hr棋牌會館-林口龜山店', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 13}]}', 'indoor', '25.05579070', '121.36635772'),
+(53, 41, '我家相公-24H桌遊體驗館(龜山銘傳)', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 10}]}', 'indoor', '24.99409577', '121.34356456'),
+(54, 42, '三加一自助麻將', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 10}]}', 'indoor', '25.05941137', '121.36698880'),
+(55, 43, '雀特GPT 24H包廂式自助桌遊店', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 6}]}', 'indoor', '25.04430245', '121.38636861'),
+(56, 44, '輔又贏棋牌館 龍華店', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 8}]}', 'indoor', '25.02237190', '121.40748296'),
+(57, 45, '藝博棋牌社', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 7}]}', 'indoor', '25.05331333', '121.36895216'),
+(58, 46, '東瀛WIN自助桌遊24H【棋牌|包廂|GAME】', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 9}]}', 'indoor', '24.99270012', '121.33529357'),
+(59, 47, '銘傳棋牌會館', '{\"opening\": [{\"days\": \"全年24小時\", \"time\": \"全年24小時\", \"category\": \"麻將\", \"court_ref\": \"麻將桌\", \"court_count\": 11}]}', 'indoor', '24.99234708', '121.34348997');
 
 -- --------------------------------------------------------
 
@@ -579,6 +758,19 @@ INSERT INTO `venue_facilities` (`venue_id`, `facility_id`) VALUES
 (41, 1),
 (50, 1),
 (51, 1),
+(52, 1),
+(52, 2),
+(53, 2),
+(55, 2),
+(56, 2),
+(57, 2),
+(58, 2),
+(52, 3),
+(53, 3),
+(55, 3),
+(56, 3),
+(57, 3),
+(58, 3),
 (3, 4),
 (5, 4),
 (11, 4),
@@ -733,7 +925,7 @@ ALTER TABLE `venue_facilities`
 -- 使用資料表 AUTO_INCREMENT `address`
 --
 ALTER TABLE `address`
-  MODIFY `address_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=40;
+  MODIFY `address_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=48;
 --
 -- 使用資料表 AUTO_INCREMENT `blacklist`
 --
@@ -743,7 +935,7 @@ ALTER TABLE `blacklist`
 -- 使用資料表 AUTO_INCREMENT `court`
 --
 ALTER TABLE `court`
-  MODIFY `court_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=65;
+  MODIFY `court_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=139;
 --
 -- 使用資料表 AUTO_INCREMENT `court_conflicts`
 --
@@ -788,12 +980,12 @@ ALTER TABLE `sports`
 -- 使用資料表 AUTO_INCREMENT `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 --
 -- 使用資料表 AUTO_INCREMENT `venues`
 --
 ALTER TABLE `venues`
-  MODIFY `venue_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=52;
+  MODIFY `venue_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=60;
 --
 -- 已匯出資料表的限制(Constraint)
 --

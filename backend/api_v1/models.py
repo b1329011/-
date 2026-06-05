@@ -159,10 +159,9 @@ class GameMatch(models.Model):
         ('failed_to_start', 'Failed to Start'),
     )
     LEVEL_CHOICES = (
-        ('C(初學者)', 'C(初學者)'),
-        ('B(熟練)', 'B(熟練)'),
-        ('A(高手)', 'A(高手)'),
-        ('S(菁英)', 'S(菁英)'),
+        ('休閒', '休閒'),
+        ('業餘', '業餘'),
+        ('高手', '高手'),
     )
     BOOKING_STATUS_CHOICES = (
         ('已佔到/已預約', '已佔到/已預約'),

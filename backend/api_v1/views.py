@@ -547,6 +547,10 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def join_match(self, request, pk=None):
         match = self.get_object()
         user = request.user
+        
+        # 讀取強制加入參數，支援布林值與字串
+        force_param = request.data.get('force', False) if isinstance(request.data, dict) else False
+        force = force_param in [True, 'true', 'True', 1, '1']
 
         # 1. Blacklist check
         if Blacklist.objects.filter(user=user, removed_at__isnull=True).exists():
@@ -566,59 +570,83 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if match.gender_limit == '限女' and user.gender != '女':
             return Response({"detail": "此球局限女性參加。"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 3.8 Profile completeness check
+        if not user.phone:
+            return Response({"detail": "請先完善個人檔案後再加入球局。"}, status=status.HTTP_400_BAD_REQUEST)
+
         # 4. Level check
         user_level_obj = UserSportLevel.objects.filter(user=user, sport=match.sport).first()
-        user_level = user_level_obj.level if user_level_obj else 'B(熟練)'
+        if not user_level_obj:
+            return Response({"detail": f"請先至個人檔案設定您的 {match.sport.name} 等級。"}, status=status.HTTP_400_BAD_REQUEST)
+        user_level_raw = user_level_obj.level
         
-        level_map = {
-            'C(初學者)': ['beginner', 'casual', 'C', 'C(初學者)'],
-            'B(熟練)': ['casual', 'advanced', 'B', 'B(熟練)'],
-            'A(高手)': ['advanced', 'A', 'A(高手)'],
-            'S(菁英)': ['advanced', 'S', 'S(菁英)'],
-            # 也保留對舊資料的相容
-            'C(beginner)': ['beginner', 'casual', 'C', 'C(初學者)'],
-            'B(advanced)': ['casual', 'advanced', 'B', 'B(熟練)'],
-            'A(Veteran)': ['advanced', 'A', 'A(高手)'],
-            'S(Elite)': ['advanced', 'S', 'S(菁英)'],
-            'beginner': ['beginner', 'C', 'C(初學者)'],
-            'casual': ['casual', 'B', 'B(熟練)'],
-            'advanced': ['advanced', 'A', 'S', 'A(高手)', 'S(菁英)']
+        # 正規化使用者等級為 C, B, A, S
+        norm_map = {
+            'C': 'C', 'C(初學者)': 'C', 'C(beginner)': 'C', 'beginner': 'C',
+            'B': 'B', 'B(熟練)': 'B', 'B(advanced)': 'B', 'casual': 'B',
+            'A': 'A', 'A(高手)': 'A', 'A(Veteran)': 'A',
+            'S': 'S', 'S(菁英)': 'S', 'S(Elite)': 'S', 'advanced': 'A',
         }
-        
-        if user_level in level_map:
-            allowed_target_levels = level_map.get(user_level, ['casual', 'B', 'B(熟練)'])
-        else:
-            allowed_target_levels = [user_level, 'casual', 'B', 'B(熟練)']
+        user_lv = norm_map.get(user_level_raw, 'B')
 
-        if match.target_level not in allowed_target_levels:
-            if match.target_level and len(match.target_level) == 1:
-                pass
-            else:
+        # 正規化球局的 target_level 為 休閒、業餘、高手
+        target_lv_raw = match.target_level
+        target_norm = {
+            '休閒': '休閒',
+            '業餘': '業餘',
+            '高手': '高手',
+            # 舊版相容
+            '新手(CB可參加)': '休閒',
+            '高手(BA可參加)': '業餘',
+            '菁英(AS可參加)': '高手',
+            'C(初學者)': '休閒', 'C(beginner)': '休閒', 'C': '休閒', 'beginner': '休閒',
+            'B(熟練)': '業餘', 'B(advanced)': '業餘', 'B': '業餘', 'casual': '業餘',
+            'A(高手)': '業餘', 'A(Veteran)': '業餘', 'A': '業餘',
+            'S(菁英)': '高手', 'S(Elite)': '高手', 'S': '高手', 'advanced': '業餘',
+        }
+        target_lv = target_norm.get(target_lv_raw, '休閒')
+
+        warning_msg = None
+        if not force:
+            if target_lv == '休閒':
+                if user_lv not in ['C', 'B']:
+                    warning_msg = "您的球技等級高於此球局的目標程度，請多加留意。"
+            elif target_lv == '業餘':
+                if user_lv not in ['B', 'A']:
+                    warning_msg = "您的球技等級不符此球局的目標程度，請多加留意。"
+            elif target_lv == '高手':
+                if user_lv not in ['A', 'S']:
+                    warning_msg = "您的球技等級低於此球局的目標程度，請多加留意。"
+
+            if warning_msg:
                 return Response({
-                    "detail": f"Your level ({user_level}) does not match the target level ({match.target_level})."
+                    "error_code": "LEVEL_MISMATCH",
+                    "detail": f"{warning_msg}是否確定要加入？"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         # 5. Full room check
+        response_data = {}
         if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
             # Automatically join waitlist!
             pos = MatchWaitlist.objects.filter(match=match, status='waiting').count() + 1
             wait_entry = MatchWaitlist.objects.create(match=match, user=user, queue_position=pos, status='waiting')
-            return Response({
+            response_data = {
                 "status": "waitlist",
                 "position": pos,
                 "message": f"球局已滿，已自動為您排入候補名單，目前順位為第 {pos} 位。"
-            }, status=status.HTTP_200_OK)
+            }
+        else:
+            # 6. Join
+            MatchParticipant.objects.create(match=match, user=user)
+            if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
+                match.match_status = 'full'
+                match.save()
+            response_data = {
+                "status": "joined",
+                "message": "成功加入球局。"
+            }
 
-        # 6. Join
-        MatchParticipant.objects.create(match=match, user=user)
-        if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
-            match.match_status = 'full'
-            match.save()
-
-        return Response({
-            "status": "joined",
-            "message": "成功加入球局。"
-        }, status=status.HTTP_201_CREATED)
+        return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['delete'], url_path='leave')
     def leave_match(self, request, pk=None):
