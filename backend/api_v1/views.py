@@ -913,6 +913,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         participants = match.participants.all()
         for p in participants:
             Notification.objects.create(
+                user=p.user,
                 match=match,
                 message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{status_val}\n說明：{note_val or '無'}"
             )
@@ -1109,7 +1110,11 @@ class NotificationViewSet(viewsets.ViewSet):
         
         match_ids = set(list(user_matches) + list(fav_venue_matches))
         
-        notifs = Notification.objects.filter(match_id__in=match_ids).order_by('-created_at')
+        notifs = Notification.objects.filter(
+            match_id__in=match_ids
+        ).filter(
+            Q(user=request.user) | Q(user__isnull=True)
+        ).order_by('-created_at')
         serializer = NotificationSerializer(notifs, many=True)
         return Response(serializer.data)
 

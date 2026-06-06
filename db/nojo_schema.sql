@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- 主機： 127.0.0.1
--- 產生時間： 2026-06-06 16:49:52
+-- 產生時間： 2026-06-06 17:35:49
 -- 伺服器版本： 10.4.32-MariaDB
 -- PHP 版本： 8.2.12
 
@@ -120,8 +120,21 @@ CREATE TABLE `gamesmatches` (
   `booking_status` enum('已佔到/已預約','未佔到/未預約','未確認') NOT NULL DEFAULT '未佔到/未預約',
   `gender_limit` enum('不限','限男','限女') NOT NULL DEFAULT '不限',
   `game_note` text DEFAULT NULL COMMENT '佔場位置或衣服說明備註',
-  `布告欄` text DEFAULT NULL,
   `game_name` varchar(100) NOT NULL COMMENT '比賽名稱'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- 資料表結構 `game_bulletins`
+--
+
+CREATE TABLE `game_bulletins` (
+  `bulletin_id` int(11) NOT NULL,
+  `game_id` int(11) NOT NULL,
+  `title` varchar(200) NOT NULL DEFAULT '公告',
+  `content` text NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -327,6 +340,13 @@ ALTER TABLE `gamesmatches`
   ADD KEY `court_id` (`court_id`);
 
 --
+-- 資料表索引 `game_bulletins`
+--
+ALTER TABLE `game_bulletins`
+  ADD PRIMARY KEY (`bulletin_id`),
+  ADD KEY `game_id` (`game_id`);
+
+--
 -- 資料表索引 `keep`
 --
 ALTER TABLE `keep`
@@ -452,6 +472,12 @@ ALTER TABLE `gamesmatches`
   MODIFY `game_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- 使用資料表自動遞增(AUTO_INCREMENT) `game_bulletins`
+--
+ALTER TABLE `game_bulletins`
+  MODIFY `bulletin_id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- 使用資料表自動遞增(AUTO_INCREMENT) `keep`
 --
 ALTER TABLE `keep`
@@ -548,6 +574,12 @@ ALTER TABLE `gamesmatches`
   ADD CONSTRAINT `gamesmatches_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE,
   ADD CONSTRAINT `gamesmatches_ibfk_3` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`sport_id`) ON UPDATE CASCADE,
   ADD CONSTRAINT `gamesmatches_ibfk_4` FOREIGN KEY (`court_id`) REFERENCES `court` (`court_id`);
+
+--
+-- 資料表的限制式 `game_bulletins`
+--
+ALTER TABLE `game_bulletins`
+  ADD CONSTRAINT `game_bulletins_ibfk_1` FOREIGN KEY (`game_id`) REFERENCES `gamesmatches` (`game_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- 資料表的限制式 `keep`
