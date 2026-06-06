@@ -2,9 +2,9 @@ from django.urls import path, re_path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AuthLoginView, AuthRegisterView, UserViewSet, SportViewSet, VenueViewSet, CourtViewSet,
-    GameMatchViewSet, FavoriteGameViewSet, FavoriteVenueViewSet, ReportViewSet,
+    GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
-    FeedbackViewSet, AnnouncementViewSet, AdminAnalyticsView, DemoWeatherView
+    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -20,12 +20,12 @@ router.register('venues', VenueViewSet, basename='venue')
 router.register('courts', CourtViewSet, basename='court')
 router.register('games', GameMatchViewSet, basename='gamematch')
 router.register('favorites/games', FavoriteGameViewSet, basename='favorite-game')
-router.register('favorites/venues', FavoriteVenueViewSet, basename='favorite-venue')
+# router.register('favorites/venues', FavoriteVenueViewSet, basename='favorite-venue')
 router.register('reports', ReportViewSet, basename='report')
 router.register('admin/games', AdminGameViewSet, basename='admin-game')
 router.register('notifications', NotificationViewSet, basename='notification')
 router.register('feedback', FeedbackViewSet, basename='feedback')
-router.register('announcements', AnnouncementViewSet, basename='announcement')
+# router.register('announcements', AnnouncementViewSet, basename='announcement')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -41,7 +41,7 @@ urlpatterns = [
     re_path(r'^weather/aqi/?$', OpenDataViewSet.as_view({'get': 'weather_aqi'}), name='weather-aqi'),
     re_path(r'^admin/feedbacks/?$', FeedbackViewSet.as_view({'get': 'list'}), name='admin-feedbacks'),
     re_path(r'^admin/feedbacks/(?P<pk>\d+)/handle/?$', FeedbackViewSet.as_view({'put': 'handle_feedback'}), name='admin-feedback-handle'),
-    re_path(r'^admin/announcements/?$', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
+    # re_path(r'^admin/announcements/?$', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
     re_path(r'^admin/analytics/?$', AdminAnalyticsView.as_view(), name='admin-analytics'),
     re_path(r'^admin/demo/games/(?P<pk>\d+)/status/?$', AdminGameViewSet.as_view({'patch': 'change_status'}), name='admin-demo-game-status'),
     re_path(r'^admin/demo/weather/?$', DemoWeatherView.as_view(), name='admin-demo-weather'),

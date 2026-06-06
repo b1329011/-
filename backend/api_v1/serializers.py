@@ -1,9 +1,8 @@
 from rest_framework import serializers
 from .models import (
     User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
-    MatchParticipant, MatchWaitlist, FavoriteGame, FavoriteVenue, 
-    PenaltyRule, Report, Blacklist, UserAvailability, Notification, WeatherData,
-    Feedback, Announcement
+    MatchParticipant, FavoriteGame, 
+    PenaltyRule, Report, Blacklist, Notification, Feedback
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -11,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'email', 'phone', 'name', 'birthday', 'age', 'credit_point', 'role')
+        fields = ('id', 'email', 'phone', 'name', 'birthday', 'age', 'credit_point', 'role', 'line_id', 'instagram')
         read_only_fields = ('credit_point', 'role')
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -21,12 +20,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels')
+        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels', 'line_id', 'instagram')
 
     def get_levels(self, obj):
         res = {}
         for usl in obj.sport_levels.all():
-            sport_name = usl.sport.name
+            sport_name = usl.sport.chinese_name
             level_char = usl.level[0] if usl.level else 'C'
             res[sport_name] = level_char
             if sport_name == "羽毛球":
@@ -41,7 +40,7 @@ class SportSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class UserSportLevelSerializer(serializers.ModelSerializer):
-    sport_name = serializers.CharField(source='sport.name', read_only=True)
+    sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
 
     class Meta:
         model = UserSportLevel
@@ -73,24 +72,45 @@ class MatchParticipantUserSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='user.id')
     phone = serializers.ReadOnlyField(source='user.phone')
     name = serializers.ReadOnlyField(source='user.name')
+    age = serializers.ReadOnlyField(source='user.age')
+    level = serializers.SerializerMethodField()
 
     class Meta:
         model = MatchParticipant
-        fields = ('id', 'phone', 'name')
+        fields = ('id', 'phone', 'name', 'age', 'level')
+
+    def get_level(self, obj):
+        user = obj.user
+        match = obj.match
+        
+        # 確保球局和運動分類存在
+        if not match or not match.sport:
+            return 'C'
+            
+        # 尋找該使用者對應此球局運動的等級紀錄
+        sport_level = user.sport_levels.filter(sport=match.sport).first()
+        
+        if sport_level and sport_level.level:
+            # 回傳等級的第一個字 (例如 'C(beginner)' -> 'C')
+            return sport_level.level[0]
+            
+        return 'C' # 預設回傳 C
 
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
     court_id = serializers.PrimaryKeyRelatedField(queryset=Court.objects.all(), source='court', required=False, allow_null=True)
-    sport_name = serializers.CharField(source='sport.name', read_only=True)
+    sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
     venue_name = serializers.CharField(source='court.venue.name', read_only=True)
     split_price = serializers.ReadOnlyField()
     current_players = serializers.IntegerField(source='current_players_count', read_only=True)
     participants = MatchParticipantUserSerializer(many=True, read_only=True)
+    creator_id = serializers.ReadOnlyField(source='creator.id')
     distance_km = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, required=False)
     facilities = serializers.SerializerMethodField()
     cancel_deadline = serializers.DateTimeField(required=False, allow_null=True)
     start_time = serializers.CharField(write_only=True, required=True)
     target_level = serializers.CharField(required=True)
+    duration = serializers.CharField(write_only=True, required=False, default='2 小時')
 
     def validate_target_level(self, value):
         lv_map = {
@@ -130,11 +150,11 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
             'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
-            'weather', 'air_index', 'is_confirmed', 'booking_status',
-            'match_status', 'participants', 'distance_km', 'facilities',
-            'gender_limit', 'venue_status', 'venue_note'
+            'weather', 'air_index', 'booking_status',
+            'match_status', 'participants', 'creator_id', 'distance_km', 'facilities',
+            'gender_limit', 'announcements'
         ]
-        read_only_fields = ('match_status', 'weather', 'air_index', 'is_confirmed', 'facilities', 'time_slot')
+        read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
 
     def get_facilities(self, obj):
         if obj.court and obj.court.venue:
@@ -239,19 +259,21 @@ class GameMatchSerializer(serializers.ModelSerializer):
                 attrs['cancel_deadline'] = timezone.now()
 
         attrs.pop('start_time', None)
+        attrs.pop('duration', None)
         return attrs
+
 
 class MatchParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = MatchParticipant
         fields = '__all__'
 
-class MatchWaitlistSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.name', read_only=True)
-
-    class Meta:
-        model = MatchWaitlist
-        fields = ('id', 'match', 'user', 'user_name', 'queue_position', 'status', 'joined_at')
+# class MatchWaitlistSerializer(serializers.ModelSerializer):
+#     user_name = serializers.CharField(source='user.name', read_only=True)
+# 
+#     class Meta:
+#         model = MatchWaitlist
+#         fields = ('id', 'match', 'user', 'user_name', 'queue_position', 'status', 'joined_at')
 
 class FavoriteGameSerializer(serializers.ModelSerializer):
     match_detail = GameMatchSerializer(source='match', read_only=True)
@@ -260,12 +282,12 @@ class FavoriteGameSerializer(serializers.ModelSerializer):
         model = FavoriteGame
         fields = ('id', 'user', 'match', 'match_detail')
 
-class FavoriteVenueSerializer(serializers.ModelSerializer):
-    venue_detail = VenueSerializer(source='venue', read_only=True)
-
-    class Meta:
-        model = FavoriteVenue
-        fields = ('id', 'user', 'venue', 'venue_detail', 'created_at')
+# class FavoriteVenueSerializer(serializers.ModelSerializer):
+#     venue_detail = VenueSerializer(source='venue', read_only=True)
+# 
+#     class Meta:
+#         model = FavoriteVenue
+#         fields = ('id', 'user', 'venue', 'venue_detail', 'created_at')
 
 class PenaltyRuleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -285,7 +307,7 @@ class ReportSerializer(serializers.ModelSerializer):
             'id', 'reporter', 'reporter_name', 'offender', 'offender_name',
             'match', 'rule', 'rule_detail', 'admin_note',
             'reviewed_at', 'reviewed_by', 'status',
-            'game_id', 'reported_user_id', 'reason', 'detail'
+            'game_id', 'reported_user_id', 'detail'
         )
         read_only_fields = ('reporter', 'reviewed_at', 'reviewed_by', 'status')
         extra_kwargs = {
@@ -301,13 +323,13 @@ class BlacklistSerializer(serializers.ModelSerializer):
         model = Blacklist
         fields = ('id', 'user', 'user_phone', 'user_name', 'added_at', 'removed_at')
 
-class UserAvailabilitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserAvailability
-        fields = (
-            'id', 'available_dates', 'time_slots', 'preferred_city',
-            'preferred_district', 'latitude', 'longitude', 'search_radius_km'
-        )
+# class UserAvailabilitySerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = UserAvailability
+#         fields = (
+#             'id', 'available_dates', 'time_slots', 'preferred_city',
+#             'preferred_district', 'latitude', 'longitude', 'search_radius_km'
+#         )
 
 class NotificationSerializer(serializers.ModelSerializer):
     notification_id = serializers.IntegerField(source='id', read_only=True)
@@ -317,10 +339,10 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = ('notification_id', 'game_id', 'message', 'is_read', 'created_at')
 
-class WeatherDataSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = WeatherData
-        fields = '__all__'
+# class WeatherDataSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = WeatherData
+#         fields = '__all__'
 
 class FeedbackSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.name', read_only=True)
@@ -330,7 +352,7 @@ class FeedbackSerializer(serializers.ModelSerializer):
         fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'created_at')
         read_only_fields = ('user',)
 
-class AnnouncementSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Announcement
-        fields = ('id', 'title', 'content', 'created_at')
+# class AnnouncementSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Announcement
+#         fields = ('id', 'title', 'content', 'created_at')
