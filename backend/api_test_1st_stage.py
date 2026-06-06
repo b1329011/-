@@ -6,6 +6,12 @@ import os
 import django
 import datetime
 
+# 解決 Windows 終端機 Unicode 輸出編碼錯誤問題
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # 強制使用 sqlite 測試，避免汙染主資料庫
 os.environ['FORCE_SQLITE'] = 'True'
 
@@ -25,20 +31,15 @@ BASE_URL = "http://127.0.0.1:8088/api"
 log_file = open("1st_stage_api_test.log", "w", encoding="utf-8")
 
 def print_log(*args, **kwargs):
+    stdout = kwargs.pop('stdout', True)
     sep = kwargs.get('sep', ' ')
     end = kwargs.get('end', '\n')
     text = sep.join(map(str, args)) + end
     log_file.write(text)
     log_file.flush()
-    # Also print to stdout for visibility
-    try:
+    if stdout:
         sys.stdout.write(text)
-    except UnicodeEncodeError:
-        try:
-            sys.stdout.write(text.encode(sys.stdout.encoding or 'cp950', errors='replace').decode(sys.stdout.encoding or 'cp950'))
-        except Exception:
-            sys.stdout.write(text.encode('ascii', errors='replace').decode('ascii'))
-    sys.stdout.flush()
+        sys.stdout.flush()
 
 def print_header(title):
     print_log("\n\n" + "=" * 60)
@@ -59,6 +60,11 @@ def make_request(path, method="GET", data=None, token=None):
     if data:
         req_data = json.dumps(data).encode("utf-8")
         
+    print_log(f"📤 Request: [{method}] {url}")
+    print_log(f"   Request Headers: {json.dumps(headers, ensure_ascii=False)}", stdout=False)
+    if data:
+        print_log(f"   Request Body: {json.dumps(data, indent=2, ensure_ascii=False)}", stdout=False)
+        
     req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
     
     try:
@@ -71,6 +77,10 @@ def make_request(path, method="GET", data=None, token=None):
                 parsed_body = body
             
             print_log(f"✅ [{method}] {url} -> Status: {status}")
+            if hasattr(response, 'info'):
+                resp_headers = dict(response.info())
+                print_log(f"   Response Headers: {json.dumps(resp_headers, ensure_ascii=False)}", stdout=False)
+            print_log(f"   Response Body: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}", stdout=False)
             return status, parsed_body
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8")
@@ -79,7 +89,9 @@ def make_request(path, method="GET", data=None, token=None):
         except Exception:
             parsed_body = body
         print_log(f"❌ [{method}] {url} -> Status: {e.code}")
-        print_log(f"   Response: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}")
+        resp_headers = dict(e.headers) if hasattr(e, 'headers') else {}
+        print_log(f"   Response Headers: {json.dumps(resp_headers, ensure_ascii=False)}", stdout=False)
+        print_log(f"   Response Body: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}", stdout=False)
         return e.code, parsed_body
     except Exception as e:
         print_log(f"💥 Connection failed: {e}")
@@ -138,6 +150,8 @@ def run_tests():
         "birthday": "2000-05-20",
         "gender": "男",
         "bio": "我是主揪陳先生",
+        "instagram": "instagram_a",
+        "line_id": "line_a",
         "levels": {
             "羽球": "A"
         }
@@ -278,9 +292,50 @@ def run_tests():
         print_log("❌ 錯誤：未完善檔案竟成功加入了球局！")
 
     # 2.5 正確完成完善檔案
-    print_log("\n👉 正確完善 B 個人檔案：")
+    print_log("\n👉 測試：首次修改時，手機與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0988111222",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "phone" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的手機號碼！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的手機號碼！")
+
+    print_log("\n👉 測試：首次修改時，IG 與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0911222333",
+        "instagram": "instagram_a",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "instagram" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的 Instagram 帳號！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的 Instagram 帳號！")
+
+    print_log("\n👉 測試：首次修改時，LINE 與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0911222333",
+        "line_id": "line_a",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "line_id" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的 LINE ID！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的 LINE ID！")
+
+    # 2.5 正確完成完善檔案
+    print_log("\n👉 正確完善 B 個人檔案（使用不重複的值）：")
     make_request("/users/profile/", "PUT", data={
         "phone": "0911222333",
+        "instagram": "instagram_b",
+        "line_id": "line_b",
         "birthday": "1999-09-09",
         "gender": "男",
         "levels": {"羽球": "B"}
