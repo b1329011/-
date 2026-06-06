@@ -253,7 +253,6 @@ class GameMatch(models.Model):
     booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未佔到/未預約')
     game_note = models.TextField(null=True, blank=True, db_column='game_note')
     gender_limit = models.CharField(max_length=20, default='不限')
-    announcements = models.TextField(db_column='布告欄', null=True, blank=True)
 
     @property
     def split_price(self):

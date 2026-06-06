@@ -111,6 +111,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
     start_time = serializers.CharField(write_only=True, required=True)
     target_level = serializers.CharField(required=True)
     duration = serializers.CharField(write_only=True, required=False, default='2 小時')
+    announcements = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
         lv_map = {
@@ -160,6 +161,10 @@ class GameMatchSerializer(serializers.ModelSerializer):
         if obj.court and obj.court.venue:
             return [f.name for f in obj.court.venue.facilities.all()]
         return []
+
+    def get_announcements(self, obj):
+        latest = obj.bulletins.order_by('-created_at').first()
+        return latest.content if latest else ""
 
     def validate_total_price(self, value):
         if value is not None and (value < 0 or value > 10000):

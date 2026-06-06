@@ -510,6 +510,14 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         match = serializer.save(creator=self.request.user, court=assigned_court)
 
         MatchParticipant.objects.get_or_create(match=match, user=self.request.user)
+
+        announcement_text = self.request.data.get('announcements')
+        if announcement_text:
+            GameBulletin.objects.create(
+                match=match,
+                title="公告",
+                content=announcement_text
+            )
         
         # venue = match.court.venue
         # if venue:
@@ -523,6 +531,17 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         match = serializer.save()
+        
+        announcement_text = self.request.data.get('announcements')
+        if announcement_text:
+            latest = match.bulletins.order_by('-created_at').first()
+            if not latest or latest.content != announcement_text:
+                GameBulletin.objects.create(
+                    match=match,
+                    title="公告",
+                    content=announcement_text
+                )
+
         Notification.objects.create(
             user=match.creator,
             match=match,
