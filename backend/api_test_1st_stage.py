@@ -6,8 +6,14 @@ import os
 import django
 import datetime
 
-# 強制使用 sqlite 測試，避免汙染主資料庫
-os.environ['FORCE_SQLITE'] = 'True'
+# 解決 Windows 終端機 Unicode 輸出編碼錯誤問題
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
+# 測試 mysql 資料庫，避免強制使用 sqlite
+os.environ['FORCE_SQLITE'] = 'False'
 
 # Setup Django configuration
 backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,7 +23,7 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
-from api_v1.models import Sport, Venue, Court, GameMatch, Report, Feedback
+from api_v1.models import Sport, Venue, Court, GameMatch, Report
 
 BASE_URL = "http://127.0.0.1:8088/api"
 
@@ -25,20 +31,15 @@ BASE_URL = "http://127.0.0.1:8088/api"
 log_file = open("1st_stage_api_test.log", "w", encoding="utf-8")
 
 def print_log(*args, **kwargs):
+    stdout = kwargs.pop('stdout', True)
     sep = kwargs.get('sep', ' ')
     end = kwargs.get('end', '\n')
     text = sep.join(map(str, args)) + end
     log_file.write(text)
     log_file.flush()
-    # Also print to stdout for visibility
-    try:
+    if stdout:
         sys.stdout.write(text)
-    except UnicodeEncodeError:
-        try:
-            sys.stdout.write(text.encode(sys.stdout.encoding or 'cp950', errors='replace').decode(sys.stdout.encoding or 'cp950'))
-        except Exception:
-            sys.stdout.write(text.encode('ascii', errors='replace').decode('ascii'))
-    sys.stdout.flush()
+        sys.stdout.flush()
 
 def print_header(title):
     print_log("\n\n" + "=" * 60)
@@ -59,6 +60,11 @@ def make_request(path, method="GET", data=None, token=None):
     if data:
         req_data = json.dumps(data).encode("utf-8")
         
+    print_log(f"📤 Request: [{method}] {url}")
+    print_log(f"   Request Headers: {json.dumps(headers, ensure_ascii=False)}", stdout=False)
+    if data:
+        print_log(f"   Request Body: {json.dumps(data, indent=2, ensure_ascii=False)}", stdout=False)
+        
     req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
     
     try:
@@ -71,6 +77,10 @@ def make_request(path, method="GET", data=None, token=None):
                 parsed_body = body
             
             print_log(f"✅ [{method}] {url} -> Status: {status}")
+            if hasattr(response, 'info'):
+                resp_headers = dict(response.info())
+                print_log(f"   Response Headers: {json.dumps(resp_headers, ensure_ascii=False)}", stdout=False)
+            print_log(f"   Response Body: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}", stdout=False)
             return status, parsed_body
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8")
@@ -79,19 +89,41 @@ def make_request(path, method="GET", data=None, token=None):
         except Exception:
             parsed_body = body
         print_log(f"❌ [{method}] {url} -> Status: {e.code}")
-        print_log(f"   Response: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}")
+        resp_headers = dict(e.headers) if hasattr(e, 'headers') else {}
+        print_log(f"   Response Headers: {json.dumps(resp_headers, ensure_ascii=False)}", stdout=False)
+        print_log(f"   Response Body: {json.dumps(parsed_body, indent=2, ensure_ascii=False)}", stdout=False)
         return e.code, parsed_body
     except Exception as e:
         print_log(f"💥 Connection failed: {e}")
         return None, None
 
+def check_and_create_tables():
+    from django.db import connection
+    with connection.cursor() as cursor:
+        # Check if game_bulletins table exists
+        cursor.execute("SHOW TABLES LIKE 'game_bulletins'")
+        if not cursor.fetchone():
+            print_log("[Init] Creating missing game_bulletins table in MySQL...")
+            cursor.execute("""
+                CREATE TABLE `game_bulletins` (
+                  `bulletin_id` int(11) NOT NULL AUTO_INCREMENT,
+                  `game_id` int(11) NOT NULL,
+                  `title` varchar(200) NOT NULL DEFAULT '公告',
+                  `content` text NOT NULL,
+                  `created_at` datetime(6) NOT NULL,
+                  PRIMARY KEY (`bulletin_id`),
+                  KEY `game_bulletins_game_id_fk` (`game_id`),
+                  CONSTRAINT `game_bulletins_game_id_fk` FOREIGN KEY (`game_id`) REFERENCES `gamesmatches` (`game_id`) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """)
+
 def initialize_db():
-    print_log("[Init] Cleaning SQLite Database for test run...")
-    # Delete test users from database to prevent conflicts
-    User.objects.all().delete()
-    Report.objects.all().delete()
-    Feedback.objects.all().delete()
-    GameMatch.objects.all().delete()
+    check_and_create_tables()
+
+    print_log("[Init] Cleaning test users from database for test run...")
+    # 僅刪除測試用的帳號，避免汙染與誤刪其他資料
+    test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+    User.objects.filter(email__in=test_emails).delete()
 
     # Create admin user
     User.objects.create_superuser(email="admin@example.com", name="管理員", password="admin123")
@@ -107,7 +139,7 @@ def initialize_db():
     print_log("[Init] Database seeded successfully.")
 
 def run_tests():
-    print_header("1st Stage API E2E Verification (FORCE_SQLITE)")
+    print_header("1st Stage API E2E Verification (MySQL Mode)")
     
     initialize_db()
 
@@ -138,6 +170,8 @@ def run_tests():
         "birthday": "2000-05-20",
         "gender": "男",
         "bio": "我是主揪陳先生",
+        "instagram": "instagram_a",
+        "line_id": "line_a",
         "levels": {
             "羽球": "A"
         }
@@ -278,9 +312,50 @@ def run_tests():
         print_log("❌ 錯誤：未完善檔案竟成功加入了球局！")
 
     # 2.5 正確完成完善檔案
-    print_log("\n👉 正確完善 B 個人檔案：")
+    print_log("\n👉 測試：首次修改時，手機與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0988111222",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "phone" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的手機號碼！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的手機號碼！")
+
+    print_log("\n👉 測試：首次修改時，IG 與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0911222333",
+        "instagram": "instagram_a",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "instagram" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的 Instagram 帳號！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的 Instagram 帳號！")
+
+    print_log("\n👉 測試：首次修改時，LINE 與 A 重複：")
+    status, res = make_request("/users/profile/", "PUT", data={
+        "phone": "0911222333",
+        "line_id": "line_a",  # 重複 A
+        "birthday": "1999-09-09",
+        "gender": "男",
+        "levels": {"羽球": "B"}
+    }, token=token_b)
+    if status == 400 and "duplicates" in res and "line_id" in res["duplicates"]:
+        print_log("✅ 成功阻擋重複的 LINE ID！")
+    else:
+        print_log("❌ 錯誤：未成功阻擋重複的 LINE ID！")
+
+    # 2.5 正確完成完善檔案
+    print_log("\n👉 正確完善 B 個人檔案（使用不重複的值）：")
     make_request("/users/profile/", "PUT", data={
         "phone": "0911222333",
+        "instagram": "instagram_b",
+        "line_id": "line_b",
         "birthday": "1999-09-09",
         "gender": "男",
         "levels": {"羽球": "B"}
@@ -400,5 +475,17 @@ def run_tests():
     print_log("🎉 1st Stage API 測試全數執行完畢！")
     print_log("=" * 60 + "\n")
 
+def cleanup_db():
+    print_log("[Cleanup] Cleaning up test data from Database...")
+    try:
+        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+        deleted_count, details = User.objects.filter(email__in=test_emails).delete()
+        print_log(f"[Cleanup] Deleted test users and cascaded objects: {deleted_count} ({details})")
+    except Exception as e:
+        print_log(f"[Cleanup] Error during cleanup: {e}")
+
 if __name__ == "__main__":
-    run_tests()
+    try:
+        run_tests()
+    finally:
+        cleanup_db()

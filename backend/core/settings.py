@@ -82,7 +82,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 import socket
 
-def check_mysql_availability(host='127.0.0.1', port=3306, timeout=1.0):
+def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
     """
     Check if MySQL driver is installed and if the port is open.
     """
@@ -135,7 +135,18 @@ if mysql_available:
             'NAME': 'nojo',
             'USER': 'root',
             'PASSWORD': '',
-            'HOST': '127.0.0.1',
+            'HOST': 'localhost',
+            'PORT': '3306',
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            }
+        },
+        'nojo_django_db': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'nojo_django_db',
+            'USER': 'root',
+            'PASSWORD': '',
+            'HOST': 'localhost',
             'PORT': '3306',
             'OPTIONS': {
                 'charset': 'utf8mb4',
@@ -150,8 +161,14 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+        },
+        'nojo_django_db': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'nojo_django_db.sqlite3',
         }
     }
+
+DATABASE_ROUTERS = ['core.router.DatabaseRouter']
 
 
 
