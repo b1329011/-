@@ -12,8 +12,8 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
-# 強制使用 sqlite 測試，避免汙染主資料庫
-os.environ['FORCE_SQLITE'] = 'True'
+# 測試 mysql 資料庫，避免強制使用 sqlite
+os.environ['FORCE_SQLITE'] = 'False'
 
 # Setup Django configuration
 backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +23,7 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
-from api_v1.models import Sport, Venue, Court, GameMatch, Report, Feedback
+from api_v1.models import Sport, Venue, Court, GameMatch, Report
 
 BASE_URL = "http://127.0.0.1:8088/api"
 
@@ -97,13 +97,33 @@ def make_request(path, method="GET", data=None, token=None):
         print_log(f"💥 Connection failed: {e}")
         return None, None
 
+def check_and_create_tables():
+    from django.db import connection
+    with connection.cursor() as cursor:
+        # Check if game_bulletins table exists
+        cursor.execute("SHOW TABLES LIKE 'game_bulletins'")
+        if not cursor.fetchone():
+            print_log("[Init] Creating missing game_bulletins table in MySQL...")
+            cursor.execute("""
+                CREATE TABLE `game_bulletins` (
+                  `bulletin_id` int(11) NOT NULL AUTO_INCREMENT,
+                  `game_id` int(11) NOT NULL,
+                  `title` varchar(200) NOT NULL DEFAULT '公告',
+                  `content` text NOT NULL,
+                  `created_at` datetime(6) NOT NULL,
+                  PRIMARY KEY (`bulletin_id`),
+                  KEY `game_bulletins_game_id_fk` (`game_id`),
+                  CONSTRAINT `game_bulletins_game_id_fk` FOREIGN KEY (`game_id`) REFERENCES `gamesmatches` (`game_id`) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """)
+
 def initialize_db():
-    print_log("[Init] Cleaning SQLite Database for test run...")
-    # Delete test users from database to prevent conflicts
-    User.objects.all().delete()
-    Report.objects.all().delete()
-    Feedback.objects.all().delete()
-    GameMatch.objects.all().delete()
+    check_and_create_tables()
+
+    print_log("[Init] Cleaning test users from database for test run...")
+    # 僅刪除測試用的帳號，避免汙染與誤刪其他資料
+    test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+    User.objects.filter(email__in=test_emails).delete()
 
     # Create admin user
     User.objects.create_superuser(email="admin@example.com", name="管理員", password="admin123")
@@ -119,7 +139,7 @@ def initialize_db():
     print_log("[Init] Database seeded successfully.")
 
 def run_tests():
-    print_header("1st Stage API E2E Verification (FORCE_SQLITE)")
+    print_header("1st Stage API E2E Verification (MySQL Mode)")
     
     initialize_db()
 
@@ -455,5 +475,17 @@ def run_tests():
     print_log("🎉 1st Stage API 測試全數執行完畢！")
     print_log("=" * 60 + "\n")
 
+def cleanup_db():
+    print_log("[Cleanup] Cleaning up test data from Database...")
+    try:
+        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+        deleted_count, details = User.objects.filter(email__in=test_emails).delete()
+        print_log(f"[Cleanup] Deleted test users and cascaded objects: {deleted_count} ({details})")
+    except Exception as e:
+        print_log(f"[Cleanup] Error during cleanup: {e}")
+
 if __name__ == "__main__":
-    run_tests()
+    try:
+        run_tests()
+    finally:
+        cleanup_db()
