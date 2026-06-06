@@ -140,6 +140,17 @@ if mysql_available:
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
+        },
+        'nojo_django_db': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'nojo_django_db',
+            'USER': 'root',
+            'PASSWORD': '',
+            'HOST': '127.0.0.1',
+            'PORT': '3306',
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            }
         }
     }
 
@@ -150,8 +161,14 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+        },
+        'nojo_django_db': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'nojo_django_db.sqlite3',
         }
     }
+
+DATABASE_ROUTERS = ['core.router.DatabaseRouter']
 
 
 

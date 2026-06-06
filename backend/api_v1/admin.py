@@ -1,9 +1,9 @@
 from django.contrib import admin
 from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
-    CourtConflict, GameMatch, MatchParticipant, MatchWaitlist,
-    FavoriteGame, FavoriteVenue, PenaltyRule, Report, Blacklist,
-    UserAvailability, Notification, WeatherData, Feedback, Announcement
+    CourtConflict, GameMatch, MatchParticipant,
+    FavoriteGame, PenaltyRule, Report, Blacklist,
+    Notification
 )
 
 @admin.register(User)
@@ -52,8 +52,8 @@ class CourtConflictAdmin(admin.ModelAdmin):
 
 @admin.register(GameMatch)
 class GameMatchAdmin(admin.ModelAdmin):
-    list_display = ('id', 'sport', 'court', 'match_status', 'booking_date', 'time_slot', 'most_players', 'is_confirmed')
-    list_filter = ('match_status', 'sport', 'booking_date', 'is_confirmed')
+    list_display = ('id', 'sport', 'court', 'match_status', 'booking_date', 'time_slot', 'most_players')
+    list_filter = ('match_status', 'sport', 'booking_date')
     search_fields = ('sport__name', 'court__venue__name')
 
 @admin.register(MatchParticipant)
@@ -61,18 +61,18 @@ class MatchParticipantAdmin(admin.ModelAdmin):
     list_display = ('match', 'user', 'joined_at')
     list_filter = ('joined_at',)
 
-@admin.register(MatchWaitlist)
-class MatchWaitlistAdmin(admin.ModelAdmin):
-    list_display = ('match', 'user', 'queue_position', 'status', 'joined_at')
-    list_filter = ('status', 'joined_at')
+# @admin.register(MatchWaitlist)
+# class MatchWaitlistAdmin(admin.ModelAdmin):
+#     list_display = ('match', 'user', 'queue_position', 'status', 'joined_at')
+#     list_filter = ('status', 'joined_at')
 
 @admin.register(FavoriteGame)
 class FavoriteGameAdmin(admin.ModelAdmin):
     list_display = ('user', 'match')
 
-@admin.register(FavoriteVenue)
-class FavoriteVenueAdmin(admin.ModelAdmin):
-    list_display = ('user', 'venue', 'created_at')
+# @admin.register(FavoriteVenue)
+# class FavoriteVenueAdmin(admin.ModelAdmin):
+#     list_display = ('user', 'venue', 'created_at')
 
 @admin.register(PenaltyRule)
 class PenaltyRuleAdmin(admin.ModelAdmin):
@@ -89,26 +89,26 @@ class BlacklistAdmin(admin.ModelAdmin):
     list_display = ('user', 'added_at', 'removed_at')
     search_fields = ('user__name', 'user__phone')
 
-@admin.register(UserAvailability)
-class UserAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ('user', 'preferred_city', 'preferred_district', 'search_radius_km')
+# @admin.register(UserAvailability)
+# class UserAvailabilityAdmin(admin.ModelAdmin):
+#     list_display = ('user', 'preferred_city', 'preferred_district', 'search_radius_km')
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('match', 'message', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
 
-@admin.register(WeatherData)
-class WeatherDataAdmin(admin.ModelAdmin):
-    list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
-    list_filter = ('city',)
-
-@admin.register(Feedback)
-class FeedbackAdmin(admin.ModelAdmin):
-    list_display = ('user', 'type', 'created_at')
-    list_filter = ('type', 'created_at')
-
-@admin.register(Announcement)
-class AnnouncementAdmin(admin.ModelAdmin):
-    list_display = ('title', 'created_at')
-    list_filter = ('created_at',)
+# @admin.register(WeatherData)
+# class WeatherDataAdmin(admin.ModelAdmin):
+#     list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
+#     list_filter = ('city',)
+# 
+# @admin.register(Feedback)
+# class FeedbackAdmin(admin.ModelAdmin):
+#     list_display = ('user', 'type', 'created_at')
+#     list_filter = ('type', 'created_at')
+# 
+# @admin.register(Announcement)
+# class AnnouncementAdmin(admin.ModelAdmin):
+#     list_display = ('title', 'created_at')
+#     list_filter = ('created_at',)

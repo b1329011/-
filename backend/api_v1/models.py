@@ -1,12 +1,17 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
+import os
+
+FORCE_SQLITE = os.environ.get('FORCE_SQLITE') == 'True'
+
 
 class UserManager(BaseUserManager):
     def create_user(self, email, name, password=None, **extra_fields):
         if not email:
             raise ValueError('The Email must be set')
         email = self.normalize_email(email)
+        extra_fields.setdefault('gender', '不願透漏')
         user = self.model(email=email, name=name, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -18,7 +23,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('role', 'admin')
         return self.create_user(email, name, password, **extra_fields)
 
-class User(AbstractBaseUser, PermissionsMixin):
+class User(AbstractBaseUser):
     ROLE_CHOICES = (
         ('user', 'User'),
         ('admin', 'Admin'),
@@ -33,14 +38,56 @@ class User(AbstractBaseUser, PermissionsMixin):
     gender = models.CharField(max_length=10, null=True, blank=True)
     avatar_url = models.CharField(max_length=255, null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
-    date_joined = models.DateTimeField(default=timezone.now)
+    line_id = models.CharField(max_length=50, null=True, blank=True)
+    instagram = models.CharField(max_length=50, null=True, blank=True)
 
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name']
+
+    @property
+    def is_active(self):
+        return True
+
+    @is_active.setter
+    def is_active(self, value):
+        pass
+
+    @property
+    def is_staff(self):
+        return self.role == 'admin'
+
+    @is_staff.setter
+    def is_staff(self, value):
+        if value:
+            self.role = 'admin'
+
+    @property
+    def last_login(self):
+        return None
+
+    @last_login.setter
+    def last_login(self, value):
+        pass
+
+    @property
+    def is_superuser(self):
+        return self.role == 'admin'
+
+    @is_superuser.setter
+    def is_superuser(self, value):
+        if value:
+            self.role = 'admin'
+
+    def has_perm(self, perm, obj=None):
+        return self.is_superuser
+
+    def has_module_perms(self, app_label):
+        return self.is_superuser
+
+
+
 
     @property
     def age(self):
@@ -54,16 +101,29 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'users'
+        managed = FORCE_SQLITE
 
 class Sport(models.Model):
     id = models.AutoField(primary_key=True, db_column='sport_id')
     name = models.CharField(db_column='sport_name', max_length=100, unique=True)
 
+    @property
+    def chinese_name(self):
+        translation = {
+            'basketball': '籃球',
+            'badminton': '羽球',
+            'volleyball': '排球',
+            'mahjohn': '麻將',
+            'table tennis': '桌球'
+        }
+        return translation.get(self.name.lower(), self.name)
+
     def __str__(self):
-        return self.name
+        return self.chinese_name
 
     class Meta:
         db_table = 'sports'
+        managed = FORCE_SQLITE
 
 class UserSportLevel(models.Model):
     LEVEL_CHOICES = (
@@ -81,6 +141,7 @@ class UserSportLevel(models.Model):
     class Meta:
         db_table = 'user_sport_levels'
         unique_together = ('user', 'sport')
+        managed = FORCE_SQLITE
 
 class Address(models.Model):
     id = models.AutoField(primary_key=True, db_column='address_id')
@@ -93,6 +154,7 @@ class Address(models.Model):
 
     class Meta:
         db_table = 'address'
+        managed = FORCE_SQLITE
 
 class Facility(models.Model):
     id = models.AutoField(primary_key=True, db_column='facility_id')
@@ -103,6 +165,7 @@ class Facility(models.Model):
 
     class Meta:
         db_table = 'facilities'
+        managed = FORCE_SQLITE
 
 class Venue(models.Model):
     VENUE_TYPES = (
@@ -124,6 +187,7 @@ class Venue(models.Model):
 
     class Meta:
         db_table = 'venues'
+        managed = FORCE_SQLITE
 
 class Court(models.Model):
     id = models.AutoField(primary_key=True, db_column='court_id')
@@ -141,6 +205,7 @@ class Court(models.Model):
 
     class Meta:
         db_table = 'court'
+        managed = FORCE_SQLITE
 
 class CourtConflict(models.Model):
     id = models.AutoField(primary_key=True, db_column='conflict_id')
@@ -150,6 +215,7 @@ class CourtConflict(models.Model):
     class Meta:
         db_table = 'court_conflicts'
         unique_together = ('court1', 'court2')
+        managed = FORCE_SQLITE
 
 class GameMatch(models.Model):
     STATUS_CHOICES = (
@@ -184,14 +250,10 @@ class GameMatch(models.Model):
     match_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruiting')
     weather = models.JSONField(db_column='weather', null=True, blank=True)
     air_index = models.IntegerField(null=True, blank=True)
-    is_confirmed = models.BooleanField(default=False)
     booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未佔到/未預約')
-    duration = models.CharField(max_length=50, default="2 小時")
     game_note = models.TextField(null=True, blank=True, db_column='game_note')
     gender_limit = models.CharField(max_length=20, default='不限')
-    venue_status = models.CharField(max_length=20, default='未確認')
-    venue_note = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    announcements = models.TextField(db_column='布告欄', null=True, blank=True)
 
     @property
     def split_price(self):
@@ -205,10 +267,11 @@ class GameMatch(models.Model):
         return self.participants.count()
 
     def __str__(self):
-        return f"{self.game_name} - {self.sport.name} at {self.court.venue.name if self.court else 'Unknown Court'} ({self.booking_date} {self.time_slot})"
+        return f"{self.game_name} - {self.sport.chinese_name} at {self.court.venue.name if self.court else 'Unknown Court'} ({self.booking_date} {self.time_slot})"
 
     class Meta:
         db_table = 'gamesmatches'
+        managed = FORCE_SQLITE
 
 class MatchParticipant(models.Model):
     id = models.AutoField(primary_key=True, db_column='list_id')
@@ -219,23 +282,25 @@ class MatchParticipant(models.Model):
     class Meta:
         db_table = 'match_participants'
         unique_together = ('match', 'user')
+        managed = FORCE_SQLITE
 
-class MatchWaitlist(models.Model):
-    STATUS_CHOICES = (
-        ('waiting', 'Waiting'),
-        ('promoted', 'Promoted'),
-        ('cancelled', 'Cancelled'),
-    )
-    id = models.AutoField(primary_key=True, db_column='waitlist_id')
-    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='waitlist')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
-    queue_position = models.IntegerField()
-    joined_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
-
-    class Meta:
-        db_table = 'match_waitlist'
-        unique_together = (('match', 'user'), ('match', 'queue_position'))
+# class MatchWaitlist(models.Model):
+#     STATUS_CHOICES = (
+#         ('waiting', 'Waiting'),
+#         ('promoted', 'Promoted'),
+#         ('cancelled', 'Cancelled'),
+#     )
+#     id = models.AutoField(primary_key=True, db_column='waitlist_id')
+#     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='waitlist')
+#     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
+#     queue_position = models.IntegerField()
+#     joined_at = models.DateTimeField(auto_now_add=True)
+#     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
+# 
+#     class Meta:
+#         db_table = 'match_waitlist'
+#         unique_together = (('match', 'user'), ('match', 'queue_position'))
+#         managed = False
 
 class FavoriteGame(models.Model):
     id = models.AutoField(primary_key=True)
@@ -245,15 +310,17 @@ class FavoriteGame(models.Model):
     class Meta:
         db_table = 'keep'
         unique_together = ('user', 'match')
+        managed = FORCE_SQLITE
 
-class FavoriteVenue(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='favorite_venues')
-    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, db_column='venue_id')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'favorite_venues'
-        unique_together = ('user', 'venue')
+# class FavoriteVenue(models.Model):
+#     user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='favorite_venues')
+#     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, db_column='venue_id')
+#     created_at = models.DateTimeField(auto_now_add=True)
+# 
+#     class Meta:
+#         db_table = 'favorite_venues'
+#         unique_together = ('user', 'venue')
+#         managed = False
 
 class PenaltyRule(models.Model):
     id = models.AutoField(primary_key=True, db_column='rule_id')
@@ -269,6 +336,7 @@ class PenaltyRule(models.Model):
 
     class Meta:
         db_table = 'penalty_rules'
+        managed = FORCE_SQLITE
 
 class Report(models.Model):
     STATUS_CHOICES = (
@@ -286,7 +354,6 @@ class Report(models.Model):
     offender = models.ForeignKey(User, on_delete=models.CASCADE, db_column='offender_id', related_name='reports_received')
     match = models.ForeignKey(GameMatch, on_delete=models.SET_NULL, null=True, db_column='game_id')
     rule = models.ForeignKey(PenaltyRule, on_delete=models.SET_NULL, null=True, blank=True, db_column='rule_id')
-    reason = models.CharField(max_length=100, null=True, blank=True)
     detail = models.TextField(null=True, blank=True)
     admin_note = models.TextField(blank=True, null=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
@@ -295,6 +362,7 @@ class Report(models.Model):
 
     class Meta:
         db_table = 'reports'
+        managed = FORCE_SQLITE
 
 class Blacklist(models.Model):
     id = models.AutoField(primary_key=True, db_column='blacklist_id')
@@ -307,19 +375,20 @@ class Blacklist(models.Model):
 
     class Meta:
         db_table = 'blacklist'
+        managed = FORCE_SQLITE
 
-class UserAvailability(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='availability')
-    available_dates = models.JSONField(default=list) # e.g. ["2026-05-25", "2026-05-26"]
-    time_slots = models.JSONField(default=list) # e.g. ["18:00-20:00", "20:00-22:00"]
-    preferred_city = models.CharField(max_length=50)
-    preferred_district = models.CharField(max_length=50)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6)
-    search_radius_km = models.IntegerField(default=5)
-
-    class Meta:
-        db_table = 'user_availability'
+# class UserAvailability(models.Model):
+#     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='availability')
+#     available_dates = models.JSONField(default=list) # e.g. ["2026-05-25", "2026-05-26"]
+#     time_slots = models.JSONField(default=list) # e.g. ["18:00-20:00", "20:00-22:00"]
+#     preferred_city = models.CharField(max_length=50)
+#     preferred_district = models.CharField(max_length=50)
+#     latitude = models.DecimalField(max_digits=9, decimal_places=6)
+#     longitude = models.DecimalField(max_digits=9, decimal_places=6)
+#     search_radius_km = models.IntegerField(default=5)
+# 
+#     class Meta:
+#         db_table = 'user_availability'
 
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
@@ -331,19 +400,20 @@ class Notification(models.Model):
 
     class Meta:
         db_table = 'notification'
+        managed = FORCE_SQLITE
 
-class WeatherData(models.Model):
-    city = models.CharField(max_length=50)
-    district = models.CharField(max_length=50)
-    temperature = models.DecimalField(max_digits=4, decimal_places=1, default=25.0)
-    rain_probability = models.DecimalField(max_digits=4, decimal_places=2, default=0.0) # 0.00 to 1.00
-    aqi = models.IntegerField(default=50)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'weather_data'
-        unique_together = ('city', 'district')
-
+# class WeatherData(models.Model):
+#     city = models.CharField(max_length=50)
+#     district = models.CharField(max_length=50)
+#     temperature = models.DecimalField(max_digits=4, decimal_places=1, default=25.0)
+#     rain_probability = models.DecimalField(max_digits=4, decimal_places=2, default=0.0) # 0.00 to 1.00
+#     aqi = models.IntegerField(default=50)
+#     updated_at = models.DateTimeField(auto_now=True)
+# 
+#     class Meta:
+#         db_table = 'weather_data'
+#         unique_together = ('city', 'district')
+# 
 class Feedback(models.Model):
     TYPE_CHOICES = (
         ('建議', '建議'),
@@ -360,13 +430,15 @@ class Feedback(models.Model):
 
     class Meta:
         db_table = 'feedbacks'
+        managed = FORCE_SQLITE
 
-class Announcement(models.Model):
-    id = models.AutoField(primary_key=True, db_column='announcement_id')
-    game = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', null=True, blank=True, related_name='announcements')
-    title = models.CharField(max_length=200, default='公告')
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'announcements'
+# 
+# class Announcement(models.Model):
+#     id = models.AutoField(primary_key=True, db_column='announcement_id')
+#     game = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', null=True, blank=True, related_name='announcements')
+#     title = models.CharField(max_length=200, default='公告')
+#     content = models.TextField()
+#     created_at = models.DateTimeField(auto_now_add=True)
+# 
+#     class Meta:
+#         db_table = 'announcements'
