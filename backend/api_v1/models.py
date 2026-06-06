@@ -413,32 +413,13 @@ class Notification(models.Model):
 #     class Meta:
 #         db_table = 'weather_data'
 #         unique_together = ('city', 'district')
-# 
-class Feedback(models.Model):
-    TYPE_CHOICES = (
-        ('建議', '建議'),
-        ('錯誤', '錯誤'),
-        ('場地', '場地'),
-        ('其他', '其他'),
-    )
-    id = models.AutoField(primary_key=True, db_column='feedback_id')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+class GameBulletin(models.Model):
+    id = models.AutoField(primary_key=True, db_column='bulletin_id')
+    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='bulletins')
+    title = models.CharField(max_length=200, default='公告')
     content = models.TextField()
-    is_handled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'feedbacks'
+        db_table = 'game_bulletins'
         managed = FORCE_SQLITE
-
-# 
-# class Announcement(models.Model):
-#     id = models.AutoField(primary_key=True, db_column='announcement_id')
-#     game = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', null=True, blank=True, related_name='announcements')
-#     title = models.CharField(max_length=200, default='公告')
-#     content = models.TextField()
-#     created_at = models.DateTimeField(auto_now_add=True)
-# 
-#     class Meta:
-#         db_table = 'announcements'

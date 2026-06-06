@@ -102,12 +102,6 @@ class NotificationAdmin(admin.ModelAdmin):
 # class WeatherDataAdmin(admin.ModelAdmin):
 #     list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
 #     list_filter = ('city',)
-# 
-# @admin.register(Feedback)
-# class FeedbackAdmin(admin.ModelAdmin):
-#     list_display = ('user', 'type', 'created_at')
-#     list_filter = ('type', 'created_at')
-# 
 # @admin.register(Announcement)
 # class AnnouncementAdmin(admin.ModelAdmin):
 #     list_display = ('title', 'created_at')

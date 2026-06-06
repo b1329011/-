@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
-    PenaltyRule, Report, Blacklist, Notification, Feedback
+    PenaltyRule, Report, Blacklist, Notification, GameBulletin
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -344,15 +344,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 #         model = WeatherData
 #         fields = '__all__'
 
-class FeedbackSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.name', read_only=True)
-
+class GameBulletinSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Feedback
-        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'created_at')
-        read_only_fields = ('user',)
-
-# class AnnouncementSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Announcement
-#         fields = ('id', 'title', 'content', 'created_at')
+        model = GameBulletin
+        fields = ('id', 'match', 'title', 'content', 'created_at')

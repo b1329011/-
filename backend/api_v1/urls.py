@@ -4,7 +4,7 @@ from .views import (
     AuthLoginView, AuthRegisterView, UserViewSet, SportViewSet, VenueViewSet, CourtViewSet,
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
-    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet
+    AdminAnalyticsView, DemoWeatherView
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -24,7 +24,6 @@ router.register('favorites/games', FavoriteGameViewSet, basename='favorite-game'
 router.register('reports', ReportViewSet, basename='report')
 router.register('admin/games', AdminGameViewSet, basename='admin-game')
 router.register('notifications', NotificationViewSet, basename='notification')
-router.register('feedback', FeedbackViewSet, basename='feedback')
 # router.register('announcements', AnnouncementViewSet, basename='announcement')
 
 urlpatterns = [
@@ -39,9 +38,7 @@ urlpatterns = [
     re_path(r'^admin/opendata/sync-venues/?$', OpenDataViewSet.as_view({'post': 'sync_venues'}), name='admin-sync-venues'),
     re_path(r'^opendata/weather/?$', OpenDataViewSet.as_view({'get': 'weather'}), name='opendata-weather'),
     re_path(r'^weather/aqi/?$', OpenDataViewSet.as_view({'get': 'weather_aqi'}), name='weather-aqi'),
-    re_path(r'^admin/feedbacks/?$', FeedbackViewSet.as_view({'get': 'list'}), name='admin-feedbacks'),
-    re_path(r'^admin/feedbacks/(?P<pk>\d+)/handle/?$', FeedbackViewSet.as_view({'put': 'handle_feedback'}), name='admin-feedback-handle'),
-    # re_path(r'^admin/announcements/?$', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
+# re_path(r'^admin/announcements/?$', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
     re_path(r'^admin/analytics/?$', AdminAnalyticsView.as_view(), name='admin-analytics'),
     re_path(r'^admin/demo/games/(?P<pk>\d+)/status/?$', AdminGameViewSet.as_view({'patch': 'change_status'}), name='admin-demo-game-status'),
     re_path(r'^admin/demo/weather/?$', DemoWeatherView.as_view(), name='admin-demo-weather'),

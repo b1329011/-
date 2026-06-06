@@ -13,14 +13,14 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist,
-    Notification, Feedback
+    Notification, GameBulletin
 )
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
-    BlacklistSerializer, NotificationSerializer, FeedbackSerializer
+    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
 )
 
 User = get_user_model()
@@ -849,14 +849,17 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def announcements(self, request, pk=None):
         match = self.get_object()
         if request.method == 'GET':
-            text = match.announcements or ""
+            bulletins = match.bulletins.all().order_by('created_at')
             data = []
-            if text:
-                formatted_time = timezone.localtime(timezone.now()).strftime("%I:%M %p")
+            for b in bulletins:
+                formatted_time = timezone.localtime(b.created_at).strftime("%I:%M %p")
                 data.append({
-                    "id": 1,
-                    "text": text,
-                    "time": formatted_time
+                    "id": b.id,
+                    "title": b.title,
+                    "content": b.content,
+                    "text": b.content,  # for backwards compatibility with tests
+                    "time": formatted_time,
+                    "created_at": b.created_at
                 })
             return Response(data, status=status.HTTP_200_OK)
         
@@ -864,26 +867,34 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             if match.creator != request.user:
                 return Response({"detail": "Only the host can post announcements."}, status=status.HTTP_403_FORBIDDEN)
             
-            text = request.data.get('text')
-            if not text:
+            content = request.data.get('content') or request.data.get('text')
+            title = request.data.get('title', '公告')
+            
+            if not content:
                 return Response({"detail": "text is required."}, status=status.HTTP_400_BAD_REQUEST)
             
-            match.announcements = text
-            match.save()
+            bulletin = GameBulletin.objects.create(
+                match=match,
+                title=title,
+                content=content
+            )
             
             for p in match.participants.all():
                 if p.user != match.creator:
                     Notification.objects.create(
                         user=p.user,
                         match=match,
-                        message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{text}」"
+                        message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{content}」"
                     )
             
-            formatted_time = timezone.localtime(timezone.now()).strftime("%I:%M %p")
+            formatted_time = timezone.localtime(bulletin.created_at).strftime("%I:%M %p")
             return Response({
-                "id": 1,
-                "text": text,
-                "time": formatted_time
+                "id": bulletin.id,
+                "title": bulletin.title,
+                "content": bulletin.content,
+                "text": bulletin.content,  # for backwards compatibility with tests
+                "time": formatted_time,
+                "created_at": bulletin.created_at
             }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path='venue-status')
@@ -1190,32 +1201,6 @@ class OpenDataViewSet(viewsets.ViewSet):
             "aqi": 45
         }, status=status.HTTP_200_OK)
 
-class FeedbackViewSet(viewsets.ModelViewSet):
-    serializer_class = FeedbackSerializer
-
-    def get_permissions(self):
-        if self.action == 'create':
-            return [permissions.IsAuthenticated()]
-        return [IsAdminRole()]
-
-    def get_queryset(self):
-        queryset = Feedback.objects.all()
-        is_handled = self.request.query_params.get('is_handled')
-        if is_handled is not None:
-            val = is_handled.lower() in ['true', '1']
-            queryset = queryset.filter(is_handled=val)
-        return queryset
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    @action(detail=True, methods=['put'], url_path='handle')
-    def handle_feedback(self, request, pk=None):
-        feedback = self.get_object()
-        is_handled_val = request.data.get('is_handled', True)
-        feedback.is_handled = is_handled_val
-        feedback.save()
-        return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
 # 
 # class AnnouncementViewSet(viewsets.ModelViewSet):
 #     queryset = Announcement.objects.all().order_by('-created_at')

@@ -108,21 +108,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='Feedback',
-            fields=[
-                ('id', models.AutoField(db_column='feedback_id', primary_key=True, serialize=False)),
-                ('type', models.CharField(choices=[('建議', '建議'), ('錯誤', '錯誤'), ('場地', '場地'), ('其他', '其他')], max_length=20)),
-                ('content', models.TextField()),
-                ('is_handled', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(db_column='user_id', db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='feedbacks', to=settings.AUTH_USER_MODEL)),
-            ],
-            options={
-                'db_table': 'feedbacks',
-                'managed': True,
-            },
-        ),
-        migrations.CreateModel(
             name='GameMatch',
             fields=[
                 ('id', models.AutoField(db_column='game_id', primary_key=True, serialize=False)),
