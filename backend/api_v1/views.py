@@ -871,12 +871,15 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             bulletins = match.bulletins.all().order_by('created_at')
             data = []
             for b in bulletins:
-                formatted_time = timezone.localtime(b.created_at).strftime("%I:%M %p")
+                local_dt = timezone.localtime(b.created_at)
+                formatted_time = local_dt.strftime("%I:%M %p")
+                formatted_date = local_dt.strftime("%Y-%m-%d")
                 data.append({
                     "id": b.id,
                     "title": b.title,
                     "content": b.content,
                     "text": b.content,  # for backwards compatibility with tests
+                    "date": formatted_date,
                     "time": formatted_time,
                     "created_at": b.created_at
                 })
@@ -906,12 +909,15 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{content}」"
                     )
             
-            formatted_time = timezone.localtime(bulletin.created_at).strftime("%I:%M %p")
+            local_dt = timezone.localtime(bulletin.created_at)
+            formatted_time = local_dt.strftime("%I:%M %p")
+            formatted_date = local_dt.strftime("%Y-%m-%d")
             return Response({
                 "id": bulletin.id,
                 "title": bulletin.title,
                 "content": bulletin.content,
                 "text": bulletin.content,  # for backwards compatibility with tests
+                "date": formatted_date,
                 "time": formatted_time,
                 "created_at": bulletin.created_at
             }, status=status.HTTP_201_CREATED)
