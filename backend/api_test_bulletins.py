@@ -208,7 +208,7 @@ def run_tests():
     }
     status, bulletin_res = make_request(f"/games/{game_id}/announcements/", "POST", data=bulletin_payload, token=token_a)
     if status == 201:
-        print_log(f"✅ 公告發布成功！公告 ID: {bulletin_res['id']}")
+        print_log(f"✅ 公告發布成功！公告 ID: {bulletin_res['id']}，日期: {bulletin_res.get('date')}")
     else:
         print_log(f"❌ 公告發布失敗：Status {status}")
         return
@@ -220,7 +220,7 @@ def run_tests():
     for b in bulletins_list:
         if b["content"] == bulletin_payload["content"]:
             bulletin_found = True
-            print_log(f"✅ 成功在公告列表中找到公告：【{b['title']}】{b['content']}")
+            print_log(f"✅ 成功在公告列表中找到公告：【{b['title']}】{b['content']}，日期：{b.get('date')}")
             break
     if not bulletin_found:
         print_log("❌ 錯誤：公告列表中未找到剛發布的公告！")

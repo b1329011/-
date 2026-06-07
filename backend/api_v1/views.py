@@ -135,12 +135,16 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-    @action(detail=False, methods=['get', 'put', 'patch'], url_path='profile')
+    @action(detail=False, methods=['get', 'put', 'patch', 'delete'], url_path='profile')
     def profile(self, request):
         user = request.user
         if request.method == 'GET':
             serializer = UserProfileSerializer(user)
             return Response(serializer.data)
+        
+        if request.method == 'DELETE':
+            user.delete()
+            return Response({"detail": "帳號已成功註銷與刪除。"}, status=status.HTTP_200_OK)
         
         # PUT / PATCH
         name = request.data.get('name')
@@ -152,6 +156,18 @@ class UserViewSet(viewsets.ModelViewSet):
         levels = request.data.get('levels')
         instagram = request.data.get('instagram') or request.data.get('ig')
         line_id = request.data.get('line_id') or request.data.get('line')
+
+        # Robust string/JSON parsing for levels and ISO date formatting for birthday
+        if levels and isinstance(levels, str):
+            import json
+            try:
+                levels = json.loads(levels)
+            except Exception:
+                pass
+
+        if birthday and isinstance(birthday, str):
+            if 'T' in birthday:
+                birthday = birthday.split('T')[0]
 
         # 首次建立檔案校驗：phone 與 levels 為必填
         is_first_setup = not user.phone
@@ -220,17 +236,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if levels and isinstance(levels, dict):
             for sport_name, short_lv in levels.items():
-                lv_map = {
-                    'S': 'S(菁英)',
-                    'A': 'A(高手)',
-                    'B': 'B(熟練)',
-                    'C': 'C(初學者)'
-                }
-                full_lv = lv_map.get(short_lv, 'C(初學者)')
+                first_char = short_lv.strip().upper()[0] if short_lv else 'C'
+                if first_char not in ['S', 'A', 'B', 'C']:
+                    first_char = 'C'
                 sport = get_sport_by_name_or_alias(sport_name)
                 UserSportLevel.objects.update_or_create(
                     user=user, sport=sport,
-                    defaults={'level': full_lv}
+                    defaults={'level': first_char}
                 )
 
         serializer = UserProfileSerializer(user)
@@ -248,10 +260,14 @@ class UserViewSet(viewsets.ModelViewSet):
             if not sport_id or not level:
                 return Response({"detail": "sport_id and level are required."}, status=status.HTTP_400_BAD_REQUEST)
             
+            first_char = level.strip().upper()[0] if level else 'C'
+            if first_char not in ['S', 'A', 'B', 'C']:
+                first_char = 'C'
+            
             sport = get_object_or_404(Sport, pk=sport_id)
             level_obj, created = UserSportLevel.objects.update_or_create(
                 user=request.user, sport=sport,
-                defaults={'level': level}
+                defaults={'level': first_char}
             )
             serializer = UserSportLevelSerializer(level_obj)
             return Response(serializer.data)
@@ -871,12 +887,15 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             bulletins = match.bulletins.all().order_by('created_at')
             data = []
             for b in bulletins:
-                formatted_time = timezone.localtime(b.created_at).strftime("%I:%M %p")
+                local_dt = timezone.localtime(b.created_at)
+                formatted_time = local_dt.strftime("%I:%M %p")
+                formatted_date = local_dt.strftime("%Y-%m-%d")
                 data.append({
                     "id": b.id,
                     "title": b.title,
                     "content": b.content,
                     "text": b.content,  # for backwards compatibility with tests
+                    "date": formatted_date,
                     "time": formatted_time,
                     "created_at": b.created_at
                 })
@@ -906,12 +925,15 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{content}」"
                     )
             
-            formatted_time = timezone.localtime(bulletin.created_at).strftime("%I:%M %p")
+            local_dt = timezone.localtime(bulletin.created_at)
+            formatted_time = local_dt.strftime("%I:%M %p")
+            formatted_date = local_dt.strftime("%Y-%m-%d")
             return Response({
                 "id": bulletin.id,
                 "title": bulletin.title,
                 "content": bulletin.content,
                 "text": bulletin.content,  # for backwards compatibility with tests
+                "date": formatted_date,
                 "time": formatted_time,
                 "created_at": bulletin.created_at
             }, status=status.HTTP_201_CREATED)
