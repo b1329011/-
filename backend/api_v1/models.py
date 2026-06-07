@@ -127,10 +127,10 @@ class Sport(models.Model):
 
 class UserSportLevel(models.Model):
     LEVEL_CHOICES = (
-        ('C(初學者)', 'C(初學者)'),
-        ('B(熟練)', 'B(熟練)'),
-        ('A(高手)', 'A(高手)'),
-        ('S(菁英)', 'S(菁英)'),
+        ('C', 'C'),
+        ('B', 'B'),
+        ('A', 'A'),
+        ('S', 'S'),
     )
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='sport_levels')
