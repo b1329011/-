@@ -168,7 +168,7 @@ def run_tests():
         "phone": "0900222222",
         "birthday": "2000-01-02",
         "gender": "女",
-        "levels": {"羽球": "B"}
+        "levels": {"羽球": "A"}
     }, token=token_b)
 
     # 3. A 發起球局
@@ -179,7 +179,7 @@ def run_tests():
         "sport_id": 2,  # 羽球 (已預先載入)
         "court_id": 1,
         "most_players": 4,
-        "target_level": "A",
+        "target_level": "高手",
         "booking_date": tomorrow,
         "start_time": "19:00",
         "duration": "2 小時",

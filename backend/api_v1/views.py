@@ -44,29 +44,8 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return 6371.0 * c
 
 def get_sport_by_name_or_alias(sport_name, create=True):
-    name_clean = sport_name.strip().lower()
-    alias_map = {
-        '籃球': ['basketball', '籃球'],
-        '羽毛球': ['badminton', '羽毛球', '羽球'],
-        '排球': ['volleyball', '排球'],
-        '麻將': ['mahjohn', '麻將'],
-        '桌球': ['table tennis', '桌球']
-    }
-    
-    standard_name = None
-    for std_name, aliases in alias_map.items():
-        if name_clean in aliases:
-            standard_name = std_name
-            break
-            
-    if not standard_name:
-        standard_name = sport_name
-        
-    aliases_to_check = alias_map.get(standard_name, [standard_name])
-    aliases_to_check = list(set([a.lower() for a in aliases_to_check] + [standard_name.lower(), name_clean]))
-    
     for sport in Sport.objects.all():
-        if sport.name.lower() in aliases_to_check:
+        if sport.name.strip().lower() == sport_name.strip().lower():
             return sport
             
     if create:
@@ -940,33 +919,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         user_level_obj = UserSportLevel.objects.filter(user=user, sport=match.sport).first()
         if not user_level_obj:
             return Response({"detail": f"請先至個人檔案設定您的 {match.sport.chinese_name} 等級。"}, status=status.HTTP_400_BAD_REQUEST)
-        user_level_raw = user_level_obj.level
-        
-        # 正規化使用者等級為 C, B, A, S
-        norm_map = {
-            'C': 'C', 'C(初學者)': 'C', 'C(beginner)': 'C', 'beginner': 'C',
-            'B': 'B', 'B(熟練)': 'B', 'B(advanced)': 'B', 'casual': 'B',
-            'A': 'A', 'A(高手)': 'A', 'A(Veteran)': 'A',
-            'S': 'S', 'S(菁英)': 'S', 'S(Elite)': 'S', 'advanced': 'A',
-        }
-        user_lv = norm_map.get(user_level_raw, 'B')
-
-        # 正規化球局的 target_level 為 休閒、業餘、高手
-        target_lv_raw = match.target_level
-        target_norm = {
-            '休閒': '休閒',
-            '業餘': '業餘',
-            '高手': '高手',
-            # 舊版相容
-            '新手(CB可參加)': '休閒',
-            '高手(BA可參加)': '業餘',
-            '菁英(AS可參加)': '高手',
-            'C(初學者)': '休閒', 'C(beginner)': '休閒', 'C': '休閒', 'beginner': '休閒',
-            'B(熟練)': '業餘', 'B(advanced)': '業餘', 'B': '業餘', 'casual': '業餘',
-            'A(高手)': '業餘', 'A(Veteran)': '業餘', 'A': '業餘',
-            'S(菁英)': '高手', 'S(Elite)': '高手', 'S': '高手', 'advanced': '業餘',
-        }
-        target_lv = target_norm.get(target_lv_raw, '休閒')
+        user_lv = user_level_obj.level
+        target_lv = match.target_level
 
         warning_msg = None
         if not force:
@@ -1192,7 +1146,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='venue-status')
     def venue_status(self, request, pk=None):
         match = self.get_object()
-        
         # 權限檢查：只有主揪才能回報場地狀態
         if match.creator != request.user and request.user.role != 'admin':
             return Response({"detail": "只有主揪才能回報場地狀態。"}, status=status.HTTP_403_FORBIDDEN)
@@ -1202,17 +1155,22 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if not status_val:
             return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 支援英文與中文輸入，對映至資料庫的 Enum 選項
+        # 支援前端傳入的英文或中文狀態，並映射為資料庫的中文真實值
         status_map = {
-            'confirmed': '已確認/已預約',
-            'failed': '未借到場地',
-            'pending': '未確認'
+            'confirmed': '已佔到/已預約',
+            'failed': '未佔到/未預約',
+            '已佔到/已預約': '已佔到/已預約',
+            '未佔到/未預約': '未佔到/未預約',
+            '未確認': '未確認'
         }
-        db_status = status_map.get(status_val, status_val)
-
-        match.booking_status = db_status
         
-        is_failed = status_val == 'failed' or db_status == '未借到場地'
+        mapped_status = status_map.get(status_val)
+        if not mapped_status:
+            return Response({"detail": f"無效的狀態值：{status_val}"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        match.booking_status = mapped_status
+        
+        is_failed = mapped_status == '未佔到/未預約'
         
         if not is_failed:
             match.save()
