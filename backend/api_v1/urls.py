@@ -35,7 +35,6 @@ urlpatterns = [
     re_path(r'^admin/venues/(?P<pk>\d+)/?$', VenueViewSet.as_view({'delete': 'destroy'}), name='admin-venue-delete'),
     re_path(r'^auth/register/?$', AuthRegisterView.as_view(), name='auth-register'),
     re_path(r'^auth/login/?$', AuthLoginView.as_view(), name='auth-login'),
-    re_path(r'^venues/(?P<venue_id>\d+)/courts/(?P<pk>\d+)/report-status/?$', CourtViewSet.as_view({'post': 'report_status'}), name='court-report-status'),
     re_path(r'^admin/broadcast/?$', AdminBroadcastViewSet.as_view({'post': 'create'}), name='admin-broadcast'),
     re_path(r'^admin/opendata/sync-venues/?$', OpenDataViewSet.as_view({'post': 'sync_venues'}), name='admin-sync-venues'),
     re_path(r'^opendata/weather/?$', OpenDataViewSet.as_view({'get': 'weather'}), name='opendata-weather'),

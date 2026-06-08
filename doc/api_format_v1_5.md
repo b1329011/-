@@ -73,12 +73,7 @@
 - **路徑：** `GET /api/venues/regions`
 - **說明：** 用於前端篩選器，回傳以 縣市 -> 行政區 分組的場地清單。
 
-### 4. 回報球場狀態
-- **路徑：** `POST /api/venues/{venue_id}/courts/{court_id}/report-status`
-- **參數：** `{"issue_type": "漏水", "description": "天花板在滴水"}`
-- **說明：** 標記球場為佔用/異常，並推播警告給今日預約該球場的主揪。
-
-### 5. 管理員功能 (Admin Only)
+### 4. 管理員功能 (Admin Only)
 - **新增場地：** `POST /api/venues`
 - **刪除場地：** `DELETE /api/venues/{id}` (若有進行中球局則回傳 409)
 - **緊急關閉場地：** `POST /api/venues/{id}/emergency-close` (通知所有受影響球友)

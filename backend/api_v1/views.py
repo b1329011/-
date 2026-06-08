@@ -481,33 +481,6 @@ class CourtViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [IsAdminRole()]
 
-    @action(detail=True, methods=['post'], url_path='report-status')
-    def report_status(self, request, pk=None, venue_id=None):
-        court = get_object_or_404(Court, pk=pk, venue_id=venue_id)
-        issue_type = request.data.get('issue_type')
-        description = request.data.get('description', '')
-
-        if not issue_type:
-            return Response({"detail": "issue_type is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        court.occupied = True
-        court.save()
-
-        today = timezone.now().date()
-        affected_games = GameMatch.objects.filter(court=court, booking_date=today)
-        
-        for game in affected_games:
-            Notification.objects.create(
-                user=game.creator,
-                match=game,
-                message=f"場地異常警告通知 ⚠️：您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
-            )
-
-        return Response({
-            "status": "success",
-            "message": "感謝您的回報！系統已建立場地修繕案並通知管理員，同時將警告推播給今日預計使用此場地的球友房主。"
-        }, status=status.HTTP_200_OK)
-
 def get_match_start_datetime(match):
     """
     Given a GameMatch, return its timezone-aware start datetime.

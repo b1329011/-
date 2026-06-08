@@ -162,14 +162,11 @@ graph TD
 
 ### G. 場地異常回報與管理 (Venues & Courts)
 1. **業務流程說明**:
-   - 場館資料除由管理員在後台錄入與爬蟲寫入外，系統提供大眾協作回報機制。
-   - 使用者或主揪到場後，若發現場地設備損壞（如羽球網斷裂）、場館臨時整修或根本不存在，可發起異常狀態回報並上傳現場照片。
-   - **預警關聯球局**: 後端收到回報後，自動標記該實體球場（`court`）的狀態，除通知管理員審查外，還會自動查詢**當天預計使用該實體球場的所有進行中球局房主**，主動發送「場地異常警告通知」，方便其提前應變。
+   - 場館資料由管理員在後台錄入與爬蟲寫入。
 2. **資料庫連動**:
    - 讀寫 `venues`、`court`、`facilities`、`venue_facilities`。詳見 [database.md -> venues](database.md#5-venues-場館與球場館表) 及 [court](database.md#8-court-場館內實體場地桌次表)。
 3. **實現 API 端點**:
    - 場館列表與詳情：`GET /api/venues`。詳見 [api_format.md -> 取得場館列表](api_format.md#1-取得場館列表-支援條件與票價篩選)
-   - 回報場地異常：`POST /api/venues/{venue_id}/courts/{court_id}/report-status`。詳見 [api_format.md -> 回報場地異常](api_format.md#4-回報場地與設備異常狀態-使用者主揪回報)
    - 管理員新增場館：`POST /api/admin/venues`。詳見 [api_format.md -> 管理員新增](api_format.md#5-管理者新增運動場館-限-admin-權限)
 
 ### H. 系統通知與背景監控排程 (Notifications & Background Workers)
