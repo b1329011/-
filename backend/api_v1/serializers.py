@@ -208,7 +208,13 @@ class GameMatchSerializer(serializers.ModelSerializer):
             ret['start_time'] = instance.time_slot.split('-')[0].strip()
         else:
             ret['start_time'] = ""
+
+        # 人數達標時將招募中狀態轉換為已成團，優化前端顯示效果
+        if instance.match_status == 'recruiting' and instance.current_players_count >= instance.least_players: 
+            ret['match_status'] = 'established'
+
         return ret
+
 
     def validate(self, attrs):
         booking_date = attrs.get('booking_date')
