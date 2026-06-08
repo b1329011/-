@@ -133,6 +133,20 @@ function PartyDetail() {
 			try {
 				const freshData = await gamesApi.getGameById(id);
 				if (freshData) {
+					const reverseLevelMap = {
+						C: "休閒",
+						B: "業餘",
+						A: "高手",
+						S: "高手",
+						新手: "休閒",
+						休閒: "休閒",
+						業餘: "業餘",
+						高手: "高手",
+					};
+					const originalLevel =
+						freshData.level || freshData.target_level || prev.level;
+					const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
+
 					let venueStatus = "pending";
 					if (freshData.booking_status === "已佔到/已預約") {
 						venueStatus = "confirmed";
@@ -143,6 +157,7 @@ function PartyDetail() {
 					setParty((prev) => ({
 						...prev,
 						...freshData,
+						level: rawLevel,
 						venueStatus,
 						booking_status: freshData.booking_status,
 						game_note: freshData.game_note,
