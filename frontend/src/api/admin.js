@@ -80,6 +80,34 @@ const adminApi = {
    */
   updateDemoWeather: (data) => {
     return axiosClient.patch(`/admin/demo/weather`, data);
+  },
+
+  /**
+   * 新增場地 (限 Admin)
+   * @param {Object} data - { name, city, district, facilities }
+   * @returns {Promise}
+   */
+  createVenue: (data) => {
+    return axiosClient.post('/venues/', data);
+  },
+
+  /**
+   * 刪除系統公告 (限 Admin)
+   * @param {number|string} id 
+   * @returns {Promise}
+   */
+  deleteSystemAnnouncement: (id) => {
+    return axiosClient.delete(`/announcements/${id}/`);
+  },
+
+  /**
+   * 更新玩家信譽積分 (限 Admin)
+   * @param {number|string} userId 
+   * @param {number} creditPoint 
+   * @returns {Promise}
+   */
+  updateUserReputation: (userId, creditPoint) => {
+    return axiosClient.patch(`/users/${userId}/reputation/`, { credit_point: creditPoint });
   }
 };
 
