@@ -45,7 +45,12 @@ function PartyDetail() {
 			description:
 				"這是一個預設的揪團說明。大家一起開心打球，友誼第一！記得帶自己的裝備喔。",
 			participants: [
-				{ name: "主揪人", phone: "0912-345-678", line: "host_id" },
+				{
+					id: 999000,
+					name: "主揪人",
+					phone: "0912-345-678",
+					line: "host_id",
+				},
 			],
 			waitlist: [],
 		}),
@@ -75,32 +80,45 @@ function PartyDetail() {
 
 		processedParty.venueStatus = currentVenueStatus;
 
-		// 確保 participants 是陣列格式
-		if (
-			processedParty.participants &&
-			typeof processedParty.participants[0] === "string"
-		) {
+		// 確保 participants 是陣列格式且包含 ID
+		if (processedParty.participants) {
 			processedParty.participants = processedParty.participants.map(
-				(p, idx) => ({
-					name: p,
-					phone: idx === 0 ? "0912-345-678" : "0911-222-333",
-					line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
-					age: 20 + idx * 2, // 固定 mock 數據避免 Math.random()
-					level: ["S", "A", "B", "C"][idx % 4],
-				}),
+				(p, idx) => {
+					if (typeof p === "string") {
+						return {
+							id: 999000 + idx,
+							name: p,
+							phone: idx === 0 ? "0912-345-678" : "0911-222-333",
+							line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
+							age: 20 + idx * 2,
+							level: ["S", "A", "B", "C"][idx % 4],
+						};
+					}
+					// 如果是對象但缺少 ID，補上模擬 ID
+					if (!p.id) {
+						return { ...p, id: 999000 + idx };
+					}
+					return p;
+				},
 			);
 		}
-		if (
-			processedParty.waitlist &&
-			typeof processedParty.waitlist[0] === "string"
-		) {
-			processedParty.waitlist = processedParty.waitlist.map((p, idx) => ({
-				name: p,
-				phone: "0911-222-333",
-				line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
-				age: 25 + idx,
-				level: ["B", "C"][idx % 2],
-			}));
+		if (processedParty.waitlist) {
+			processedParty.waitlist = processedParty.waitlist.map((p, idx) => {
+				if (typeof p === "string") {
+					return {
+						id: 888000 + idx,
+						name: p,
+						phone: "0911-222-333",
+						line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
+						age: 25 + idx,
+						level: ["B", "C"][idx % 2],
+					};
+				}
+				if (!p.id) {
+					return { ...p, id: 888000 + idx };
+				}
+				return p;
+			});
 		}
 		return processedParty;
 	}, [location.state, defaultParty]);
@@ -160,6 +178,13 @@ function PartyDetail() {
 		);
 	const initialHasJoined =
 		isUserHost || initialIsParticipant || initialIsWaitlisted;
+
+	const isParticipant =
+		isUserHost ||
+		party.participant_ids?.some((id) => String(id) === String(currentUserId)) ||
+		party.participants?.some(
+			(p) => p.id === currentUserId || p.name === "我 (使用者)",
+		);
 
 	const [hasJoined, setHasJoined] = useState(initialHasJoined);
 	const [isWaitlisted, setIsWaitlisted] = useState(initialIsWaitlisted);
@@ -253,7 +278,7 @@ function PartyDetail() {
 	const [reportReason, setReportReason] = useState("未出現");
 	const [reportDetail, setReportDetail] = useState("");
 	const [reportingUser, setReportingUser] = useState(null);
-	const [reportedUsers, setReportedUsers] = useState([]); // 新增：紀錄已檢舉的用戶名
+	const [reportedUsers, setReportedUsers] = useState([]); // 新增：紀錄已檢舉的用戶 ID
 	const [showLevelWarningModal, setShowLevelWarningModal] = useState(false); // 等級不符警告
 
 	// 新增：佈告欄與取消確認狀態
@@ -323,6 +348,7 @@ function PartyDetail() {
 			);
 
 			const newMember = {
+				id: currentUserId,
 				name: "我 (使用者)",
 				phone: "0987-654-321",
 				line: "my_id_888",
@@ -1152,11 +1178,11 @@ function PartyDetail() {
 							position: "relative",
 						}}
 					>
-						{(isUserHost ||
-							party.participants.some((p) => p.name === "我 (使用者)")) &&
+						{isParticipant &&
+							String(selectedMember.id) !== String(currentUserId) &&
 							selectedMember.name !== "我 (使用者)" &&
 							selectedMember.name !== "我 (主揪)" &&
-							(reportedUsers.includes(selectedMember.name) ? (
+							(reportedUsers.includes(selectedMember.id) ? (
 								<button
 									disabled
 									style={{
@@ -1180,7 +1206,7 @@ function PartyDetail() {
 								<button
 									onClick={() => {
 										setShowReportModal(true);
-										setReportingUser(selectedMember.name);
+										setReportingUser(selectedMember.id);
 										setSelectedMember(null);
 									}}
 									style={{
@@ -1426,7 +1452,7 @@ function PartyDetail() {
 										<option value="騷擾與人身攻擊">騷擾與人身攻擊</option>
 										<option value="肢體暴力">肢體暴力</option>
 									</optgroup>
-									{reportingUser === party.participants?.[0]?.name && (
+									{reportingUser === party.participants?.[0]?.id && (
 										<optgroup label="主揪專屬原因">
 											<option value="未回報場地">未回報場地</option>
 											<option value="惡意抬價">惡意抬價</option>
