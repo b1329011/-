@@ -270,6 +270,20 @@ class GameMatchSerializer(serializers.ModelSerializer):
         least_players = attrs.get('least_players')
         most_players = attrs.get('most_players')
 
+        # 性別限制校驗：男生不能發起/修改為限女生團，女生不能發起/修改為限男生團
+        gender_limit = attrs.get('gender_limit')
+        if self.instance and gender_limit is None:
+            gender_limit = self.instance.gender_limit
+            
+        if gender_limit and gender_limit != '不限':
+            request = self.context.get('request')
+            if request and request.user and request.user.is_authenticated:
+                user_gender = request.user.gender
+                if gender_limit == '限男' and user_gender != '男':
+                    raise serializers.ValidationError({"gender_limit": "男性專屬球局只能由男生發起。"})
+                elif gender_limit == '限女' and user_gender != '女':
+                    raise serializers.ValidationError({"gender_limit": "女性專屬球局只能由女生發起。"})
+
         if self.instance:
             if not booking_date:
                 booking_date = self.instance.booking_date
