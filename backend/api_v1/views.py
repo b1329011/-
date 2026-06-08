@@ -18,6 +18,7 @@ from .models import (
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
+    GameMatchListSerializer, MatchParticipantUserSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
     BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
@@ -300,13 +301,49 @@ class SportViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
 class VenueViewSet(viewsets.ModelViewSet):
-    queryset = Venue.objects.all()
     serializer_class = VenueSerializer
 
+    def get_queryset(self):
+        queryset = Venue.objects.select_related('address').prefetch_related('facilities').all()
+        city = self.request.query_params.get('city')
+        district = self.request.query_params.get('district')
+        if city:
+            queryset = queryset.filter(address__city__icontains=city)
+        if district:
+            queryset = queryset.filter(address__district__icontains=district)
+        return queryset
+
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'regions']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], url_path='regions')
+    def regions(self, request):
+        """
+        Returns venues grouped by City and District, matching the frontend's expected structure.
+        """
+        venues = self.get_queryset()
+        regions_data = {}
+        
+        for v in venues:
+            if not v.address:
+                continue
+            city = v.address.city
+            district = v.address.district
+            
+            if city not in regions_data:
+                regions_data[city] = {}
+            if district not in regions_data[city]:
+                regions_data[city][district] = []
+            
+            regions_data[city][district].append({
+                "id": v.id,
+                "name": v.name,
+                "facilities": [f.name for f in v.facilities.all()]
+            })
+            
+        return Response(regions_data, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
         venue = self.get_object()
@@ -365,8 +402,15 @@ class VenueViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
 class CourtViewSet(viewsets.ModelViewSet):
-    queryset = Court.objects.all()
     serializer_class = CourtSerializer
+
+    def get_queryset(self):
+        return Court.objects.select_related(
+            'venue__address'
+        ).prefetch_related(
+            'venue__facilities',
+            'sports'
+        ).all()
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -418,7 +462,9 @@ def get_match_start_datetime(match):
 def get_match_end_datetime(match):
     """
     Given a GameMatch, return its timezone-aware end datetime.
+    Handles midnight crossing by checking if end_time < start_time.
     """
+    start_dt = get_match_start_datetime(match)
     end_time = timezone.datetime.max.time()
     if match.time_slot and '-' in match.time_slot:
         parts = match.time_slot.split('-')
@@ -430,7 +476,14 @@ def get_match_end_datetime(match):
                     break
                 except ValueError:
                     pass
-    return timezone.make_aware(timezone.datetime.combine(match.booking_date, end_time))
+    
+    end_dt = timezone.make_aware(timezone.datetime.combine(match.booking_date, end_time))
+    
+    # If end time is numerically before start time, it means it ends the next day
+    if end_dt <= start_dt:
+        end_dt += timezone.timedelta(days=1)
+        
+    return end_dt
 
 def update_all_match_statuses():
     """
@@ -517,6 +570,23 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
 
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return GameMatchListSerializer
+        return GameMatchSerializer
+
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        match = self.get_object()
+        all_parts = match.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:match.most_players]
+        waitlisted_parts = all_parts[match.most_players:]
+        
+        return Response({
+            'participants': MatchParticipantUserSerializer(regular_parts, many=True).data,
+            'waitlist': MatchParticipantUserSerializer(waitlisted_parts, many=True).data
+        })
+
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
             return [permissions.AllowAny()]
@@ -530,7 +600,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             'sport', 'court__venue__address', 'creator'
         ).prefetch_related(
             'participants__user'
-        ).all()
+        ).all().order_by('-id')
 
         sport_id = self.request.query_params.get('sport_id')
         target_level = self.request.query_params.get('target_level')
@@ -570,10 +640,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(target_level__icontains=level)
 
         # Filter by start time / participation if action is list
-        # Only return:
-        # - Matches that have not started yet (now < start_time)
-        # - Matches that have started but not ended yet (start_time <= now < end_time) AND user is a participant
-        # - Exclude ended matches (now >= end_time) completely.
         if getattr(self, 'action', None) == 'list':
             now = timezone.now()
             user = self.request.user
@@ -595,7 +661,14 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         any(p.user_id == user.id for p in match.participants.all())
                     )
                 
-                if not has_started or is_participant:
+                # Logic: 
+                # 1. Creators always see their own matches
+                # 2. Participants always see their matches
+                # 3. Non-participants see matches that haven't ended AND (haven't started OR are still recruiting/full)
+                # This ensures "just started" matches don't disappear if they are still open.
+                if is_participant:
+                    valid_ids.append(match.id)
+                elif not has_started or match.match_status in ['recruiting', 'full']:
                     valid_ids.append(match.id)
             
             queryset = queryset.filter(id__in=valid_ids)
@@ -1094,29 +1167,42 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='venue-status')
     def venue_status(self, request, pk=None):
         match = self.get_object()
+        
+        # 權限檢查：只有主揪才能回報場地狀態
+        if match.creator != request.user and request.user.role != 'admin':
+            return Response({"detail": "只有主揪才能回報場地狀態。"}, status=status.HTTP_403_FORBIDDEN)
+
         status_val = request.data.get('status')
         note_val = request.data.get('note', '')
 
         if not status_val:
             return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Support both English and Chinese input, mapping to the DB ENUM choice
+        # 支援英文與中文輸入，對映至資料庫的 Enum 選項
         status_map = {
-            'confirmed': '已佔到/已預約',
-            'failed': '未佔到/未預約',
+            'confirmed': '已確認/已預約',
+            'failed': '未借到場地',
             'pending': '未確認'
         }
         db_status = status_map.get(status_val, status_val)
 
-        # Filter out placeholder note values like 'CONFIRMED' or 'FAILED'
+        # 過濾掉佔位用的備註值（如 'CONFIRMED' 或 'FAILED'）
         clean_note = note_val
         if clean_note and clean_note.strip().upper() in ['CONFIRMED', 'FAILED']:
             clean_note = ''
 
         match.booking_status = db_status
         match.venue_note = clean_note
+        
+        # 更新 game_note 作為前端判斷狀態的備援訊號 (需精確匹配 'CONFIRMED' 或 'FAILED')
+        if status_val == 'confirmed':
+            match.game_note = 'CONFIRMED'
+        elif status_val == 'failed':
+            match.game_note = 'FAILED'
+            
         match.save()
 
+        # 發送通知給所有參與者
         participants = match.participants.all()
         for p in participants:
             Notification.objects.create(
@@ -1125,12 +1211,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.venue_note or '無'}"
             )
 
-        return Response({
-            "status": "success",
-            "venue_status": match.booking_status,
-            "venue_note": match.venue_note,
-            "message": "場地狀態更新成功，已同步發送通知給所有參賽球友。"
-        }, status=status.HTTP_200_OK)
+        # 回傳完整的球局資料，方便前端同步
+        serializer = self.get_serializer(match)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'], url_path='confirm-presence')
     def confirm_presence(self, request, pk=None):
@@ -1341,45 +1424,59 @@ class OpenDataViewSet(viewsets.ViewSet):
             return Response({"detail": "Only admin can sync opendata."}, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
-            badminton, _ = Sport.objects.get_or_create(name="羽毛球")
-            basketball, _ = Sport.objects.get_or_create(name="籃球")
-            volleyball, _ = Sport.objects.get_or_create(name="排球")
-            mahjong, _ = Sport.objects.get_or_create(name="麻將")
+            # Ensure basic sports exist
+            sports_data = ["羽毛球", "籃球", "排球", "麻將", "桌球"]
+            sport_objs = {}
+            for s_name in sports_data:
+                s, _ = Sport.objects.get_or_create(name=s_name)
+                sport_objs[s_name] = s
 
-            addr, _ = Address.objects.get_or_create(
-                city="新北市", district="板橋區", street_line="中正路8號"
-            )
+            # Data from frontend's taiwanRegions
+            venues_to_seed = [
+                {"city": "桃園市", "district": "桃園區", "name": "桃園國民運動中心", "lat": 24.9934, "lng": 121.3124, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "桃園市", "district": "桃園區", "name": "桃園巨蛋室外籃球場", "lat": 24.9961, "lng": 121.3204, "facilities": ["飲水機", "廁所"]},
+                {"city": "桃園市", "district": "中壢區", "name": "中壢國民運動中心", "lat": 24.9602, "lng": 121.2144, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "台北市", "district": "大安區", "name": "台大體育館", "lat": 25.0219, "lng": 121.5353, "facilities": ["冷氣", "飲水機", "廁所"]},
+                {"city": "台北市", "district": "大安區", "name": "大安運動中心", "lat": 25.0224, "lng": 121.5404, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "新北市", "district": "板橋區", "name": "板橋體育館", "lat": 25.0116, "lng": 121.4617, "facilities": ["免費車位", "熱水淋浴間", "自動販賣機"]},
+            ]
 
-            venue, _ = Venue.objects.get_or_create(
-                name="板橋體育館",
-                defaults={
-                    "address": addr,
-                    "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
-                    "types": "indoor",
-                    "latitude": 25.0116,
-                    "longitude": 121.4617
-                }
-            )
+            for v_data in venues_to_seed:
+                addr, _ = Address.objects.get_or_create(
+                    city=v_data["city"], 
+                    district=v_data["district"], 
+                    street_line=v_data.get("street_line", "測試路 1 號")
+                )
 
-            venue.facilities.clear()
-            for facility_name in ["免費車位", "熱水淋浴間", "自動販賣機"]:
-                facility, _ = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility)
-            venue.save()
+                venue, _ = Venue.objects.get_or_create(
+                    name=v_data["name"],
+                    defaults={
+                        "address": addr,
+                        "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
+                        "types": "indoor" if "冷氣" in v_data["facilities"] else "outdoor",
+                        "latitude": v_data["lat"],
+                        "longitude": v_data["lng"]
+                    }
+                )
 
-            # Clean and create courts with base_price
-            Court.objects.filter(venue=venue).delete()
-            court1 = Court.objects.create(venue=venue, base_price=300)
-            court1.sports.add(badminton)
-            court2 = Court.objects.create(venue=venue, base_price=300)
-            court2.sports.add(badminton)
+                # Update facilities
+                venue.facilities.clear()
+                for f_name in v_data["facilities"]:
+                    facility, _ = Facility.objects.get_or_create(name=f_name)
+                    venue.facilities.add(facility)
+                venue.save()
 
-            # WeatherData is commented out
-            pass
+                # Create at least 2 courts per venue if none exist
+                if not venue.courts.exists():
+                    c1 = Court.objects.create(venue=venue, base_price=300)
+                    c2 = Court.objects.create(venue=venue, base_price=300)
+                    # Randomly assign sports for demo
+                    c1.sports.add(sport_objs["籃球"], sport_objs["羽毛球"])
+                    c2.sports.add(sport_objs["籃球"], sport_objs["羽毛球"])
 
         return Response({
             "status": "success",
-            "message": "OpenData venues successfully synchronized and cached."
+            "message": f"Successfully synchronized {len(venues_to_seed)} venues from OpenData."
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='weather')

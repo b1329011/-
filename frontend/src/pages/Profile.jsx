@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cake, MapPin, Clock, Phone, Camera, HelpCircle, X } from 'lucide-react';
+import { Cake, MapPin, Clock, Phone, Camera, HelpCircle, X, Star } from 'lucide-react';
+import usersApi from '../api/users';
+import gamesApi from '../api/games';
 import '../App.css';
 
 function Profile() {
@@ -9,22 +11,97 @@ function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [userInfo, setUserInfo] = useState({
-    nickname: '運動愛好者',
-    email: 'user@example.com',
-    birthday: '1998-05-20',
-    gender: '男',
-    phone: '0912345678',
-    bio: '喜歡週末到處打球，偶爾打打衛生麻將。',
+    nickname: '',
+    email: '',
+    birthday: '',
+    gender: '',
+    phone: '',
+    line: '',
+    ig: '',
+    bio: '',
     region: '桃園市',
-    levels: {
-      '籃球': 'B',
-      '排球': 'C',
-      '羽球': 'A',
-      '桌球': 'B',
-      '麻將': 'B'
-    },
-    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Lucky'
+    levels: {},
+    avatar: '',
+    role: localStorage.getItem('role') || ''
   });
+  const [reputation, setReputation] = useState({ score: 100, label: '優良玩家，從不爽約！' });
+  const [myParties, setMyParties] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await usersApi.getUserProfile();
+        // 根據 API 規格書，資料是直接放在 data 物件中，而不是 data.user
+        setUserInfo({
+          nickname: data.name || '',
+          email: data.email || '',
+          birthday: data.birthday || '',
+          gender: data.gender || '',
+          phone: data.phone || '',
+          line: data.line_id || data.line || '',
+          ig: data.instagram || data.ig || '',
+          bio: data.bio || '',
+          region: '桃園市',
+          levels: data.levels || {},
+          avatar: data.avatar_url || data.avatar || '',
+          role: data.role || ''
+        });
+        if (data.role) {
+          localStorage.setItem('role', data.role);
+        }
+        
+        if (data.credit_point !== undefined) {
+          setReputation({ 
+            score: data.credit_point, 
+            label: data.credit_point >= 80 ? '優良玩家，從不爽約！' : '請注意您的信譽積分' 
+          });
+        }
+
+        try {
+          const gamesData = await gamesApi.getGames();
+          const rawGames = Array.isArray(gamesData.results) ? gamesData.results : (Array.isArray(gamesData) ? gamesData : []);
+          const currentUserId = localStorage.getItem('user_id');
+          
+          const userGames = rawGames.filter(party => {
+            const isHost = party.creator_id && String(party.creator_id) === String(currentUserId);
+            const isParticipant = party.participant_ids?.some(id => String(id) === String(currentUserId));
+            const isWaitlisted = party.waitlist_ids?.some(id => String(id) === String(currentUserId));
+            return isHost || isParticipant || isWaitlisted;
+          }).map(newGame => {
+            const rawType = newGame.type || newGame.sport_type || newGame.sport_name || (newGame.sport?.name) || '未分類';
+            const rawLevel = newGame.level || newGame.target_level || 'C';
+            return {
+              ...newGame,
+              id: newGame.id,
+              title: newGame.title || newGame.game_name || newGame.description?.substring(0, 10) || '無標題',
+              type: rawType,
+              level: rawLevel,
+              genderLimit: newGame.genderLimit || newGame.gender_limit || '不限',
+              location: newGame.location || newGame.venue_name || '未指定地點',
+              description: newGame.description || newGame.game_note || '',
+              venue_note: newGame.venue_note || newGame.game_note || '',
+              currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
+              maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
+              currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
+              maxPlayers: newGame.maxPlayers ?? newGame.most_players ?? newGame.max_players ?? 6,
+              participants: newGame.participants || [],
+              time: newGame.time || (newGame.booking_date && newGame.start_time ? `${newGame.booking_date} ${newGame.start_time}` : '時間未定'),
+            };
+          });
+          setMyParties(userGames);
+        } catch (e) {
+          console.error('Failed to fetch user games:', e);
+        }
+
+      } catch (error) {
+        console.error('Fetch profile error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   // 預設可愛頭貼清單 (精選 8 款)
   const presetAvatars = [
@@ -38,7 +115,7 @@ function Profile() {
     'https://api.dicebear.com/9.x/adventurer/svg?seed=Willow',
   ];
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     
     // 手機號碼格式驗證
@@ -48,8 +125,24 @@ function Profile() {
       return;
     }
 
-    setIsEditing(false);
-    alert('個人資料已更新！');
+    try {
+      await usersApi.updateUserProfile({
+        name: userInfo.nickname,
+        phone: userInfo.phone,
+        line_id: userInfo.line,
+        instagram: userInfo.ig,
+        birthday: userInfo.birthday,
+        gender: userInfo.gender,
+        bio: userInfo.bio,
+        avatar: userInfo.avatar,
+        levels: userInfo.levels
+      });
+      setIsEditing(false);
+      alert('個人資料已更新！');
+    } catch (error) {
+      console.error('Update profile error:', error);
+      alert('更新失敗，請稍後再試！');
+    }
   };
 
   const handleAvatarChange = (e) => {
@@ -156,6 +249,16 @@ function Profile() {
                     <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Phone size={16} /> {userInfo.phone}
                     </p>
+                    {userInfo.line && (
+                      <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 'bold' }}>LINE:</span> {userInfo.line}
+                      </p>
+                    )}
+                    {userInfo.ig && (
+                      <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 'bold' }}>IG:</span> {userInfo.ig}
+                      </p>
+                    )}
                     <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <MapPin size={16} /> {userInfo.region}
                     </p>
@@ -167,12 +270,15 @@ function Profile() {
                       <HelpCircle size={16} color="#7995a5" style={{ cursor: 'pointer' }} onClick={() => setShowLevelHelp(true)} />
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      {Object.entries(userInfo.levels).map(([sport, lv]) => (
-                        <div key={sport} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#f1f5f9', borderRadius: '6px', fontSize: '13px' }}>
-                          <span style={{ color: '#64748b' }}>{sport}</span>
-                          <span style={{ fontWeight: '800', color: getLevelColor(lv) }}>{lv}</span>
-                        </div>
-                      ))}
+                      {['籃球', '排球', '羽球', '桌球', '麻將'].map(sport => {
+                        const lv = userInfo.levels[sport] || 'C';
+                        return (
+                          <div key={sport} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#f1f5f9', borderRadius: '6px', fontSize: '13px' }}>
+                            <span style={{ color: '#64748b' }}>{sport}</span>
+                            <span style={{ fontWeight: '800', color: getLevelColor(lv) }}>{lv}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -180,13 +286,23 @@ function Profile() {
                   
                   <div className="reputation-box">
                     <div className="reputation-title">信譽積分</div>
-                    <div className="reputation-score">98<span>/100</span></div>
-                    <p className="reputation-desc">優良玩家，從不爽約！</p>
+                    <div className="reputation-score">{reputation.score}<span>/100</span></div>
+                    <p className="reputation-desc">{reputation.label}</p>
                   </div>
 
                   <button className="btn-outline" style={{ width: '100%', marginTop: '20px' }} onClick={() => setIsEditing(true)}>
                     編輯個人資料
                   </button>
+                  
+                  {userInfo.role === 'admin' && (
+                    <button 
+                      className="btn-primary" 
+                      style={{ width: '100%', marginTop: '10px', backgroundColor: '#475569', border: 'none' }} 
+                      onClick={() => navigate('/admin')}
+                    >
+                      切換為管理員
+                    </button>
+                  )}
                 </>
               ) : (
                 <form onSubmit={handleSave} className="edit-profile-form">
@@ -213,6 +329,16 @@ function Profile() {
                     <label className="form-label">聯絡電話</label>
                     <input type="tel" className="form-input" placeholder="09xxxxxxxx" value={userInfo.phone} onChange={e => setUserInfo({...userInfo, phone: e.target.value})} required />
                   </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div className="form-group">
+                      <label className="form-label">LINE ID (選填)</label>
+                      <input type="text" className="form-input" placeholder="輸入 LINE ID" value={userInfo.line} onChange={e => setUserInfo({...userInfo, line: e.target.value})} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Instagram (選填)</label>
+                      <input type="text" className="form-input" placeholder="@username" value={userInfo.ig} onChange={e => setUserInfo({...userInfo, ig: e.target.value})} />
+                    </div>
+                  </div>
                   
                   <div style={{ marginBottom: '20px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -220,13 +346,13 @@ function Profile() {
                       <HelpCircle size={16} color="#7995a5" style={{ cursor: 'pointer' }} onClick={() => setShowLevelHelp(true)} />
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      {Object.keys(userInfo.levels).map(sport => (
+                      {['籃球', '排球', '羽球', '桌球', '麻將'].map(sport => (
                         <div key={sport}>
                           <label style={{ fontSize: '11px', color: '#94a3b8' }}>{sport}</label>
                           <select 
                             className="form-input" 
                             style={{ padding: '6px 10px', fontSize: '13px' }}
-                            value={userInfo.levels[sport]} 
+                            value={userInfo.levels[sport] || 'C'} 
                             onChange={e => handleLevelChange(sport, e.target.value)}
                           >
                             <option value="S">S</option>
@@ -266,30 +392,113 @@ function Profile() {
               <h2>我的揪團紀錄</h2>
             </div>
             
-            <div className="party-grid">
-              <div className="party-card">
-                <div className="party-card-header">
-                  <span className="party-type">籃球</span>
-                  <span className="party-status" style={{ color: '#10b981' }}>已結束</span>
-                </div>
-                <h3 className="party-title">昨晚的巨蛋熱血籃球</h3>
-                <div className="party-info">
-                  <p style={{ gap: '6px' }}><MapPin size={16} /> 桃園巨蛋室外籃球場</p>
-                  <p style={{ gap: '6px' }}><Clock size={16} /> 昨天 19:00</p>
-                </div>
-              </div>
+            <div className="party-grid" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {myParties.length > 0 ? (
+                myParties.map(party => {
+                  const currentUserId = localStorage.getItem('user_id');
+                  const isHost = currentUserId && (party.creator_id && String(party.creator_id) === String(currentUserId));
+                  const isParticipant = currentUserId && party.participant_ids?.some(id => String(id) === String(currentUserId));
+                  const isWaitlisted = currentUserId && party.waitlist_ids?.some(id => String(id) === String(currentUserId));
 
-              <div className="party-card">
-                <div className="party-card-header">
-                  <span className="party-type">麻將</span>
-                  <span className="party-status" style={{ color: '#10b981' }}>已結束</span>
+                  const isFull = party.currentPlayers >= party.maxPlayers;
+                  const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
+
+                  let statusText = `缺 ${party.maxPlayers - party.currentPlayers} 人`;
+                  let statusColor = '#ef4444'; // Red
+                  if (isFull && isWaitlistFull) {
+                    statusText = '已完全額滿';
+                    statusColor = '#94a3b8'; // Gray
+                  } else if (isFull) {
+                    statusText = `候補 ${party.currentWaitlist}/${party.maxWaitlist}`;
+                    statusColor = '#f59e0b'; // Orange
+                  }
+
+                  let badgeStatusText = '';
+                  let badgeStatusColor = '';
+
+                  const backendStatus = party.match_status || party.status || party.game_status;
+                  
+                  if (backendStatus === '已開始' || backendStatus === 'started' || backendStatus === 'playing') {
+                    badgeStatusText = '已開始';
+                    badgeStatusColor = '#10b981'; // Green
+                  } else if (backendStatus === '已關閉' || backendStatus === 'closed' || backendStatus === 'failed_to_start') {
+                    badgeStatusText = '已關閉';
+                    badgeStatusColor = '#64748b'; // Gray
+                  } else if (backendStatus === '已滿' || backendStatus === 'full') {
+                    if (!isWaitlistFull) {
+                      badgeStatusText = '可候補';
+                      badgeStatusColor = '#f59e0b'; // Orange
+                    } else {
+                      badgeStatusText = '已滿';
+                      badgeStatusColor = '#94a3b8'; // Gray
+                    }
+                  } else if (backendStatus === '可候補' || backendStatus === 'waitlisting') {
+                    badgeStatusText = '可候補';
+                    badgeStatusColor = '#f59e0b'; // Orange
+                  } else if (backendStatus === '缺人' || backendStatus === 'recruiting') {
+                    badgeStatusText = '缺人';
+                    badgeStatusColor = '#ef4444'; // Red
+                  } else {
+                    if (isFull && isWaitlistFull) {
+                      badgeStatusText = '已滿';
+                      badgeStatusColor = '#94a3b8';
+                    } else if (isFull) {
+                      badgeStatusText = '可候補';
+                      badgeStatusColor = '#f59e0b';
+                    } else {
+                      badgeStatusText = '缺人';
+                      badgeStatusColor = '#ef4444';
+                    }
+                  }
+
+                  return (
+                    <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
+                      <div className="party-card-header">
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {isHost && (
+                            <Star size={20} fill="#d8a7a7" color="#d8a7a7" style={{ marginRight: '4px' }} />
+                          )}
+                          <span className="party-type">{party.type}</span>
+                          <span className="party-level">{party.level}</span>
+                          {party.genderLimit && party.genderLimit !== '不限' && (
+                            <span className="party-level">{party.genderLimit}</span>
+                          )}
+                          {badgeStatusText && (
+                            <span className="party-level" style={{ backgroundColor: badgeStatusColor, color: 'white', fontWeight: 'bold' }}>
+                              {badgeStatusText}
+                            </span>
+                          )}
+                        </div>
+                        {badgeStatusText !== '已關閉' && (
+                          <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
+                        )}
+                      </div>
+                      <h3 className="party-title">{party.title}</h3>
+                      <div className="party-info">
+                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}{party.venue_note ? ` (${party.venue_note})` : ''}</p>
+                        <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
+                      </div>
+                      <div className="party-card-footer">
+                        {badgeStatusText !== '已關閉' ? (
+                          <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
+                        ) : (
+                          <span className="player-count"></span>
+                        )}
+                        <button className="btn-join" onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/party/${party.id}`, { state: { party } });
+                        }}>
+                          {isHost ? '管理' : isParticipant ? '已報名' : isWaitlisted ? '已候補' : isFull && isWaitlistFull ? '查看詳情' : isFull ? '排候補' : '報名參加'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <p style={{ color: '#94a3b8', fontSize: '15px' }}>目前尚無揪團紀錄</p>
                 </div>
-                <h3 className="party-title">歡樂衛生麻將局</h3>
-                <div className="party-info">
-                  <p style={{ gap: '6px' }}><MapPin size={16} /> 中壢桌遊店</p>
-                  <p style={{ gap: '6px' }}><Clock size={16} /> 上週五 20:00</p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
