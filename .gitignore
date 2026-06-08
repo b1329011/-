@@ -10,5 +10,5 @@ backend/env
 *.log
 api_test_output.log
 test_output.txt
-
+backend/db_credentials.txt
 
