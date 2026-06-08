@@ -253,7 +253,6 @@ class GameMatch(models.Model):
     air_index = models.IntegerField(null=True, blank=True)
     booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未確認')
     game_note = models.TextField(null=True, blank=True, db_column='game_note')
-    venue_note = models.TextField(null=True, blank=True, db_column='venue_note')
     gender_limit = models.CharField(max_length=20, default='不限')
 
     @property
