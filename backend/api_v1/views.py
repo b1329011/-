@@ -1578,9 +1578,9 @@ class NotificationViewSet(viewsets.ViewSet):
         match_ids = set(list(user_matches) + list(fav_venue_matches))
         
         notifs = Notification.objects.filter(
-            match_id__in=match_ids
+            Q(match_id__in=match_ids) | Q(match__isnull=True)
         ).filter(
-            Q(user=request.user) | Q(user__isnull=True)
+            Q(user=request.user) | (Q(user__isnull=True) & Q(match_id__in=match_ids))
         ).order_by('-created_at')
         serializer = NotificationSerializer(notifs, many=True)
         return Response(serializer.data)
@@ -1738,6 +1738,19 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        announcement = serializer.save()
+        # 當發布系統公告時，自動為所有使用者建立一則通知
+        users = User.objects.all()
+        notifications = [
+            Notification(
+                user=user, 
+                message=f"【系統公告】{announcement.title}\n{announcement.content}"
+            )
+            for user in users
+        ]
+        Notification.objects.bulk_create(notifications)
 
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminRole]
