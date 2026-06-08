@@ -11,6 +11,14 @@ const gamesApi = {
   },
 
   /**
+   * 取得個人歷史球局
+   * @returns {Promise}
+   */
+  getHistory: () => {
+    return axiosClient.get('/games/history/');
+  },
+
+  /**
    * 取得單一球局詳細資料
    * @param {number|string} gameId
    * @returns {Promise}
