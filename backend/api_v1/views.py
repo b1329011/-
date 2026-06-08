@@ -390,6 +390,7 @@ class CourtViewSet(viewsets.ModelViewSet):
         
         for game in affected_games:
             Notification.objects.create(
+                user=game.creator,
                 match=game,
                 message=f"場地異常警告通知 ⚠️：您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
             )
@@ -398,6 +399,21 @@ class CourtViewSet(viewsets.ModelViewSet):
             "status": "success",
             "message": "感謝您的回報！系統已建立場地修繕案並通知管理員，同時將警告推播給今日預計使用此場地的球友房主。"
         }, status=status.HTTP_200_OK)
+
+def get_match_start_datetime(match):
+    """
+    Given a GameMatch, return its timezone-aware start datetime.
+    """
+    start_time = timezone.datetime.min.time()
+    if match.time_slot and '-' in match.time_slot:
+        start_str = match.time_slot.split('-')[0].strip()
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                start_time = timezone.datetime.strptime(start_str, fmt).time()
+                break
+            except ValueError:
+                pass
+    return timezone.make_aware(timezone.datetime.combine(match.booking_date, start_time))
 
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
@@ -451,6 +467,28 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(sport__name__icontains=sport_type)
         if level:
             queryset = queryset.filter(target_level__icontains=level)
+
+        # Filter by start time / participation if action is list
+        if getattr(self, 'action', None) == 'list':
+            now = timezone.now()
+            user = self.request.user
+            valid_ids = []
+            
+            for match in queryset:
+                match_time = get_match_start_datetime(match)
+                has_started = now >= match_time
+                
+                is_participant = False
+                if user and user.is_authenticated:
+                    is_participant = (
+                        match.creator_id == user.id or
+                        any(p.user_id == user.id for p in match.participants.all())
+                    )
+                
+                if not has_started or is_participant:
+                    valid_ids.append(match.id)
+            
+            queryset = queryset.filter(id__in=valid_ids)
 
         return queryset
 
@@ -549,6 +587,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         match = serializer.save()
         
         announcement_text = self.request.data.get('announcements')
+        new_bulletin_created = False
         if announcement_text:
             latest = match.bulletins.order_by('-created_at').first()
             if not latest or latest.content != announcement_text:
@@ -557,6 +596,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     title="公告",
                     content=announcement_text
                 )
+                new_bulletin_created = True
 
         Notification.objects.create(
             user=match.creator,
@@ -565,11 +605,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         )
         for p in match.participants.all():
             if p.user != match.creator:
-                Notification.objects.create(
-                    user=p.user,
-                    match=match,
-                    message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.chinese_name}」已被主揪修改了資訊，請查看最新時間與內容。"
-                )
+                if new_bulletin_created:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{announcement_text}」"
+                    )
+                else:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.chinese_name}」已被主揪修改了資訊，請查看最新時間與內容。"
+                    )
 
     def destroy(self, request, *args, **kwargs):
         match = self.get_object()
@@ -648,6 +695,12 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def join_match(self, request, pk=None):
         match = self.get_object()
         user = request.user
+        
+        # 0. Check if the match has already started
+        now = timezone.now()
+        match_time = get_match_start_datetime(match)
+        if now >= match_time:
+            return Response({"detail": "此球局已經開始，無法加入。"}, status=status.HTTP_400_BAD_REQUEST)
         
         # 讀取強制加入參數，支援布林值與字串
         force_param = request.data.get('force', False) if isinstance(request.data, dict) else False
@@ -820,17 +873,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if match.cancel_deadline and now > match.cancel_deadline:
             is_late_cancel = True
         else:
-            start_time = timezone.datetime.min.time()
-            if match.time_slot and '-' in match.time_slot:
-                start_str = match.time_slot.split('-')[0].strip()
-                for fmt in ("%H:%M", "%H:%M:%S"):
-                    try:
-                        start_time = timezone.datetime.strptime(start_str, fmt).time()
-                        break
-                    except ValueError:
-                        pass
-            
-            match_time = timezone.make_aware(timezone.datetime.combine(match.booking_date, start_time))
+            match_time = get_match_start_datetime(match)
             if (match_time - now).total_seconds() < 86400:
                 is_late_cancel = True
 
