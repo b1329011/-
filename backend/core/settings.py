@@ -129,14 +129,19 @@ if mysql_available:
         lambda self: self.connection.mysql_is_mariadb and self.connection.mysql_version >= (10, 5, 0)
     )
     
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_port = os.environ.get('DB_PORT', '3306')
+    db_user = os.environ.get('DB_USER', 'root')
+    db_password = os.environ.get('DB_PASSWORD', '')
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo',
-            'USER': 'root',
-            'PASSWORD': '',
-            'HOST': 'localhost',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
@@ -144,10 +149,10 @@ if mysql_available:
         'nojo_django_db': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo_django_db',
-            'USER': 'root',
-            'PASSWORD': '',
-            'HOST': 'localhost',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }

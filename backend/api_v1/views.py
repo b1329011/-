@@ -570,15 +570,24 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(target_level__icontains=level)
 
         # Filter by start time / participation if action is list
+        # Only return:
+        # - Matches that have not started yet (now < start_time)
+        # - Matches that have started but not ended yet (start_time <= now < end_time) AND user is a participant
+        # - Exclude ended matches (now >= end_time) completely.
         if getattr(self, 'action', None) == 'list':
             now = timezone.now()
             user = self.request.user
             valid_ids = []
             
             for match in queryset:
-                match_time = get_match_start_datetime(match)
-                has_started = now >= match_time
+                start_time = get_match_start_datetime(match)
+                end_time = get_match_end_datetime(match)
                 
+                # Exclude ended matches completely
+                if now >= end_time:
+                    continue
+                
+                has_started = now >= start_time
                 is_participant = False
                 if user and user.is_authenticated:
                     is_participant = (
@@ -1091,8 +1100,21 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if not status_val:
             return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        match.booking_status = status_val
-        match.game_note = note_val
+        # Support both English and Chinese input, mapping to the DB ENUM choice
+        status_map = {
+            'confirmed': '已佔到/已預約',
+            'failed': '未佔到/未預約',
+            'pending': '未確認'
+        }
+        db_status = status_map.get(status_val, status_val)
+
+        # Filter out placeholder note values like 'CONFIRMED' or 'FAILED'
+        clean_note = note_val
+        if clean_note and clean_note.strip().upper() in ['CONFIRMED', 'FAILED']:
+            clean_note = ''
+
+        match.booking_status = db_status
+        match.venue_note = clean_note
         match.save()
 
         participants = match.participants.all()
@@ -1100,13 +1122,13 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             Notification.objects.create(
                 user=p.user,
                 match=match,
-                message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{status_val}\n說明：{note_val or '無'}"
+                message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.venue_note or '無'}"
             )
 
         return Response({
             "status": "success",
             "venue_status": match.booking_status,
-            "venue_note": match.game_note,
+            "venue_note": match.venue_note,
             "message": "場地狀態更新成功，已同步發送通知給所有參賽球友。"
         }, status=status.HTTP_200_OK)
 
