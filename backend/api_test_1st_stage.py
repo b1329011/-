@@ -801,24 +801,27 @@ def run_tests():
     # 重新載入球局狀態
     match_24h.refresh_from_db()
     match_started.refresh_from_db()
-    match_failed.refresh_from_db()
     match_ended.refresh_from_db()
+    
+    match_failed_id = match_failed.id
+    match_failed_exists = GameMatch.objects.filter(id=match_failed_id).exists()
 
     print_log(f"   24h球局狀態 (預期 recruiting/full): {match_24h.match_status}")
     print_log(f"   已開始成團球局狀態 (預期 started): {match_started.match_status}")
-    print_log(f"   人數不足流局球局狀態 (預期 closed): {match_failed.match_status}")
+    print_log(f"   人數不足流局球局 (預期已刪除): {'存在' if match_failed_exists else '已物理刪除'}")
     print_log(f"   已結束自動關閉球局狀態 (預期 closed): {match_ended.match_status}")
 
     # 驗證狀態值
-    if match_failed.match_status == 'closed' and match_ended.match_status == 'closed' and match_started.match_status == 'started':
-        print_log("✅ 成功：球局狀態機狀態移轉正確！")
+    if not match_failed_exists and match_ended.match_status == 'closed' and match_started.match_status == 'started':
+        print_log("✅ 成功：球局狀態機狀態移轉與物理刪除正確！")
     else:
-        print_log("❌ 錯誤：球局狀態機狀態移轉不正確！")
+        print_log("❌ 錯誤：球局狀態機狀態移轉或刪除不正確！")
 
-    # 驗證通知發送
+    # 驗證通知發送 (對已刪除球局，我們不帶 match 條件查，改查 message)
     notif_24h = Notification.objects.filter(user=user_a, match=match_24h, message__contains="將在 24 小時內開始").exists()
     notif_started = Notification.objects.filter(user=user_a, match=match_started, message__contains="已經開始").exists()
-    notif_failed = Notification.objects.filter(user=user_a, match=match_failed, message__contains="因人數未達下限").exists()
+    # match_failed 已刪除，故 match 外鍵應為 None (SET_NULL)
+    notif_failed = Notification.objects.filter(user=user_a, match__isnull=True, message__contains="因人數未達下限").exists()
     notif_ended = Notification.objects.filter(user=user_a, match=match_ended, message__contains="已順利結束").exists()
 
     print_log(f"   24h球局通知發送情況 (預期 True): {notif_24h}")
@@ -830,6 +833,19 @@ def run_tests():
         print_log("✅ 成功：球局狀態機通知發送全部正確！")
     else:
         print_log("❌ 錯誤：球局狀態機通知發送不正確！")
+
+    # 測試個人歷史球局 API
+    print_log("\n👉 測試：GET /api/games/history/ (個人歷史成團球局)：")
+    status, history = make_request("/games/history/", token=token_a)
+    if status == 200:
+        has_ended = any(h["id"] == match_ended.id for h in history)
+        has_failed = any(h["id"] == match_failed_id for h in history)
+        if has_ended and not has_failed:
+            print_log("✅ 成功：歷史球局 API 僅回傳成功結束之球局，不包含流局。")
+        else:
+            print_log(f"❌ 錯誤：歷史球局回傳結果不正確！包含流局: {has_failed}, 漏掉結束球局: {not has_ended}")
+    else:
+        print_log(f"❌ 錯誤：歷史球局 API 回傳狀態碼 {status}")
         
     # 重複呼叫狀態機，驗證防重複通知邏輯
     count_before = Notification.objects.filter(user=user_a, match=match_24h).count()
