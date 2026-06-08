@@ -222,6 +222,7 @@ class GameMatch(models.Model):
         ('recruiting', 'Recruiting'),
         ('full', 'Full'),
         ('closed', 'Closed'),
+        ('started', 'Started'),
         ('failed_to_start', 'Failed to Start'),
     )
     LEVEL_CHOICES = (

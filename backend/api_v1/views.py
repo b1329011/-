@@ -415,6 +415,104 @@ def get_match_start_datetime(match):
                 pass
     return timezone.make_aware(timezone.datetime.combine(match.booking_date, start_time))
 
+def get_match_end_datetime(match):
+    """
+    Given a GameMatch, return its timezone-aware end datetime.
+    """
+    end_time = timezone.datetime.max.time()
+    if match.time_slot and '-' in match.time_slot:
+        parts = match.time_slot.split('-')
+        if len(parts) > 1:
+            end_str = parts[1].strip()
+            for fmt in ("%H:%M", "%H:%M:%S"):
+                try:
+                    end_time = timezone.datetime.strptime(end_str, fmt).time()
+                    break
+                except ValueError:
+                    pass
+    return timezone.make_aware(timezone.datetime.combine(match.booking_date, end_time))
+
+def update_all_match_statuses():
+    """
+    Updates statuses and sends notifications for all active matches based on their time status.
+    """
+    now = timezone.now()
+    # Fetch recruiting, full, and started matches
+    active_matches = GameMatch.objects.filter(match_status__in=['recruiting', 'full', 'started'])
+    
+    for match in active_matches:
+        start_time = get_match_start_datetime(match)
+        end_time = get_match_end_datetime(match)
+        
+        # 1. Check if 24 hours before start (Notify participants)
+        if match.match_status in ['recruiting', 'full']:
+            if 0 < (start_time - now).total_seconds() <= 86400:
+                for p in match.participants.all():
+                    msg_contains = "將在 24 小時內開始"
+                    if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
+                        Notification.objects.create(
+                            user=p.user,
+                            match=match,
+                            message=f"【活動提醒】您參與的球局「{match.game_name}」將在 24 小時內開始！請準時抵達。"
+                        )
+        
+        # 2. Check time transitions
+        if now >= start_time:
+            if now < end_time:
+                # Started but not finished yet
+                if match.match_status in ['recruiting', 'full']:
+                    if match.current_players_count >= match.least_players:
+                        # Successfully started
+                        match.match_status = 'started'
+                        match.save()
+                        msg_contains = "已經開始"
+                        for p in match.participants.all():
+                            if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
+                                Notification.objects.create(
+                                    user=p.user,
+                                    match=match,
+                                    message=f"【活動開始】您參與的球局「{match.game_name}」已經開始！祝您運動愉快。"
+                                )
+                    else:
+                        # Failed to start (cancel/流局 -> status to closed)
+                        match.match_status = 'closed'
+                        match.save()
+                        for p in match.participants.all():
+                            Notification.objects.create(
+                                user=p.user,
+                                match=match,
+                                message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限（{match.least_players}人）已取消。"
+                            )
+            else:
+                # Past end time
+                if match.current_players_count >= match.least_players:
+                    match.match_status = 'closed'
+                    match.save()
+                    # Also make sure they got start notification (in case it ended without started trigger)
+                    msg_contains_start = "已經開始"
+                    for p in match.participants.all():
+                        if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains_start).exists():
+                            Notification.objects.create(
+                                user=p.user,
+                                match=match,
+                                message=f"【活動開始】您參與的球局「{match.game_name}」已經開始！祝您運動愉快。"
+                            )
+                        
+                        Notification.objects.create(
+                            user=p.user,
+                            match=match,
+                            message=f"【活動結束】您參與的球局「{match.game_name}」已順利結束，球局已自動關閉。"
+                        )
+                else:
+                    match.match_status = 'closed'
+                    match.save()
+                    for p in match.participants.all():
+                        Notification.objects.create(
+                            user=p.user,
+                            match=match,
+                            message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限已取消。"
+                        )
+
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
@@ -425,6 +523,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
+        # Dynamically trigger state machine updates
+        update_all_match_statuses()
+
         queryset = GameMatch.objects.select_related(
             'sport', 'court__venue__address', 'creator'
         ).prefetch_related(
