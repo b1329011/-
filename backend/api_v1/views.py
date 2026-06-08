@@ -649,8 +649,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 start_time = get_match_start_datetime(match)
                 end_time = get_match_end_datetime(match)
                 
-                # Exclude ended matches completely
-                if now >= end_time:
+                # Exclude ended or closed matches completely
+                if now >= end_time or match.match_status in ['closed', 'failed_to_start']:
                     continue
                 
                 has_started = now >= start_time
@@ -811,7 +811,21 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
             
-        return super().destroy(request, *args, **kwargs)
+        # 發送取消通知給所有參與者（除了主揪自己）
+        participants = match.participants.all()
+        for p in participants:
+            if p.user != match.creator:
+                Notification.objects.create(
+                    user=p.user,
+                    match=match,
+                    message=f"【活動取消】您參與的球局「{match.game_name}」已被主揪取消。"
+                )
+                
+        # 將狀態設為 'closed' 作為軟刪除取消，以保留歷史通知與資料
+        match.match_status = 'closed'
+        match.save()
+        
+        return Response({"detail": "球局已成功取消。"}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='quick-match')
     def quick_match(self, request):
@@ -1192,23 +1206,28 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             clean_note = ''
 
         match.booking_status = db_status
-        match.venue_note = clean_note
+        match.game_note = clean_note
         
         # 更新 game_note 作為前端判斷狀態的備援訊號 (需精確匹配 'CONFIRMED' 或 'FAILED')
-        if status_val == 'confirmed':
+        if status_val == 'confirmed' or db_status == '已確認/已預約':
             match.game_note = 'CONFIRMED'
-        elif status_val == 'failed':
+        elif status_val == 'failed' or db_status == '未借到場地':
             match.game_note = 'FAILED'
+            match.match_status = 'closed'
             
         match.save()
 
         # 發送通知給所有參與者
         participants = match.participants.all()
         for p in participants:
+            if match.match_status == 'closed':
+                msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。說明：{match.game_note or '無'}"
+            else:
+                msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.game_note or '無'}"
             Notification.objects.create(
                 user=p.user,
                 match=match,
-                message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.venue_note or '無'}"
+                message=msg
             )
 
         # 回傳完整的球局資料，方便前端同步
