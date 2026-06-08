@@ -393,7 +393,7 @@ class Blacklist(models.Model):
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications', null=True, blank=True)
-    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications')
+    match = models.ForeignKey(GameMatch, on_delete=models.SET_NULL, db_column='game_id', related_name='notifications', null=True, blank=True)
     message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
