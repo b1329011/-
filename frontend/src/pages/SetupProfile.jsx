@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HelpCircle, X } from 'lucide-react';
+import usersApi from '../api/users';
 import '../App.css';
 
 function SetupProfile() {
@@ -19,6 +20,7 @@ function SetupProfile() {
   const [ig, setIg] = useState('');
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [avatar, setAvatar] = useState('https://api.dicebear.com/9.x/adventurer/svg?seed=Lucky');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   // 預設可愛頭貼清單 (精選 8 款)
@@ -37,7 +39,7 @@ function SetupProfile() {
     setLevels({ ...levels, [sport]: value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // 手機號碼格式驗證 (台灣格式: 09xxxxxxxx)
@@ -47,10 +49,26 @@ function SetupProfile() {
       return;
     }
 
-    console.log('Setup Profile:', { avatar, levels, bio, birthday, gender, phone, line, ig });
-    // TODO: Connect to backend API
-    alert('設定完成，歡迎加入！');
-    navigate('/home');
+    setIsLoading(true);
+    try {
+      await usersApi.updateUserProfile({
+        avatar,
+        levels,
+        bio,
+        birthday,
+        gender,
+        phone,
+        line_id: line,
+        instagram: ig
+      });
+      alert('設定完成，歡迎加入！');
+      navigate('/home');
+    } catch (error) {
+      console.error('Setup profile error:', error);
+      alert('檔案設定失敗，請稍後再試！');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -126,9 +144,10 @@ function SetupProfile() {
               <input
                 id="birthday"
                 type="date"
-                className="form-input"
+                className="form-input custom-date-input"
                 value={birthday}
                 onChange={(e) => setBirthday(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
                 required
               />
             </div>
@@ -198,8 +217,8 @@ function SetupProfile() {
             />
           </div>
           
-          <button type="submit" className="login-button" style={{ marginTop: '10px' }}>
-            進入大廳
+          <button type="submit" className="login-button" style={{ marginTop: '10px' }} disabled={isLoading}>
+            {isLoading ? '儲存中...' : '進入大廳'}
           </button>
         </form>
       </div>

@@ -1,27 +1,47 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import authApi from '../api/auth';
 import '../App.css';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('user');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       alert('請輸入有效的電子郵件格式！');
       return;
     }
-    console.log('Login attempt:', { email, password, role });
-    // TODO: Connect to backend API
-    // 模擬登入成功後跳轉
-    if (role === 'admin') {
-      navigate('/admin');
-    } else {
+
+    setIsLoading(true);
+    try {
+      // 登入前先清空可能殘留的舊 Token
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      const response = await authApi.login({ email, password });
+      
+      // 儲存 Django 回傳的 token
+      if (response && response.token) {
+        localStorage.setItem('token', response.token);
+      }
+      if (response && response.user_id) {
+        localStorage.setItem('user_id', response.user_id);
+      }
+      if (response && response.role) {
+        localStorage.setItem('role', response.role);
+      }
+      
+      // 登入成功後一律先進入使用者大廳頁面
       navigate('/home');
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('登入失敗，請檢查帳號密碼或確認伺服器狀態！');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -31,23 +51,6 @@ function Login() {
         <div className="login-header">
           <h1 className="login-title">不揪ㄛ</h1>
           <p className="login-subtitle">尋找你的球友與牌咖，隨時開局！</p>
-        </div>
-        
-        <div className="role-toggle">
-          <button 
-            className={`role-btn ${role === 'user' ? 'active' : ''}`}
-            onClick={() => setRole('user')}
-            type="button"
-          >
-            使用者
-          </button>
-          <button 
-            className={`role-btn ${role === 'admin' ? 'active' : ''}`}
-            onClick={() => setRole('admin')}
-            type="button"
-          >
-            管理員
-          </button>
         </div>
         
         <form onSubmit={handleSubmit}>
@@ -76,13 +79,9 @@ function Login() {
               required
             />
           </div>
-
-          <div className="forgot-password">
-            <a href="#forgot">忘記密碼？</a>
-          </div>
           
-          <button type="submit" className="login-button">
-            登入
+          <button type="submit" className="login-button" disabled={isLoading}>
+            {isLoading ? '登入中...' : '登入'}
           </button>
         </form>
 

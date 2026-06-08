@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import authApi from '../api/auth';
 import '../App.css';
 
 function Register() {
@@ -7,22 +8,54 @@ function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       alert('請輸入有效的電子郵件格式！');
       return;
     }
+    if (password.length < 6) {
+      setPasswordError('密碼長度請至少包含 6 個字元！');
+      return;
+    } else {
+      setPasswordError('');
+    }
     if (password !== confirmPassword) {
       alert('兩次密碼輸入不一致喔！');
       return;
     }
-    console.log('Register attempt:', { nickname, email, password });
-    // TODO: Connect to backend API
-    navigate('/setup-profile');
+
+    setIsLoading(true);
+    try {
+      // 註冊前先清空可能殘留的舊 Token，避免 DRF 報錯 (Invalid Token)
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      const response = await authApi.register({ name: nickname, email, password });
+      
+      // 儲存 Django 回傳的 token
+      if (response && response.token) {
+        localStorage.setItem('token', response.token);
+      }
+      if (response && response.user_id) {
+        localStorage.setItem('user_id', response.user_id);
+      }
+      if (response && response.role) {
+        localStorage.setItem('role', response.role);
+      }
+      
+      alert('註冊成功！請繼續完成個人檔案設定。');
+      navigate('/setup-profile');
+    } catch (error) {
+      console.error('Register error:', error);
+      alert('註冊失敗，請確認信箱是否已被使用或伺服器狀態！');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,9 +101,13 @@ function Register() {
               className="form-input"
               placeholder="設定密碼"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError) setPasswordError('');
+              }}
               required
             />
+            {passwordError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '6px' }}>{passwordError}</div>}
           </div>
 
           <div className="form-group">
@@ -86,8 +123,8 @@ function Register() {
             />
           </div>
           
-          <button type="submit" className="login-button" style={{ marginTop: '10px' }}>
-            完成註冊
+          <button type="submit" className="login-button" style={{ marginTop: '10px' }} disabled={isLoading}>
+            {isLoading ? '註冊中...' : '完成註冊'}
           </button>
         </form>
 
