@@ -527,15 +527,14 @@ def update_all_match_statuses():
                                     message=f"【活動開始】您參與的球局「{match.game_name}」已經開始！祝您運動愉快。"
                                 )
                     else:
-                        # Failed to start (cancel/流局 -> status to closed)
-                        match.match_status = 'closed'
-                        match.save()
+                        # Failed to start (cancel/流局 -> physical delete)
                         for p in match.participants.all():
                             Notification.objects.create(
                                 user=p.user,
                                 match=match,
                                 message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限（{match.least_players}人）已取消。"
                             )
+                        match.delete()
             else:
                 # Past end time
                 if match.current_players_count >= match.least_players:
@@ -557,14 +556,14 @@ def update_all_match_statuses():
                             message=f"【活動結束】您參與的球局「{match.game_name}」已順利結束，球局已自動關閉。"
                         )
                 else:
-                    match.match_status = 'closed'
-                    match.save()
+                    # Past end time and failed (physical delete)
                     for p in match.participants.all():
                         Notification.objects.create(
                             user=p.user,
                             match=match,
                             message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限已取消。"
                         )
+                    match.delete()
 
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
@@ -586,6 +585,19 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             'participants': MatchParticipantUserSerializer(regular_parts, many=True).data,
             'waitlist': MatchParticipantUserSerializer(waitlisted_parts, many=True).data
         })
+
+    @action(detail=False, methods=['get'], url_path='history')
+    def history(self, request):
+        user = request.user
+        queryset = GameMatch.objects.filter(
+            participants__user=user,
+            match_status='closed'
+        ).select_related(
+            'sport', 'court__venue__address', 'creator'
+        ).distinct().order_by('-booking_date', '-time_slot')
+        
+        serializer = GameMatchListSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
@@ -821,9 +833,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     message=f"【活動取消】您參與的球局「{match.game_name}」已被主揪取消。"
                 )
                 
-        # 將狀態設為 'closed' 作為軟刪除取消，以保留歷史通知與資料
-        match.match_status = 'closed'
-        match.save()
+        # 物理刪除球局，以符合新機制 (通知已設為 SET_NULL 會保留)
+        match.delete()
         
         return Response({"detail": "球局已成功取消。"}, status=status.HTTP_200_OK)
 
@@ -1201,15 +1212,15 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
         match.booking_status = db_status
         
-        if status_val == 'failed' or db_status == '未借到場地':
-            match.match_status = 'closed'
-            
-        match.save()
+        is_failed = status_val == 'failed' or db_status == '未借到場地'
+        
+        if not is_failed:
+            match.save()
 
         # 發送通知給所有參與者
         participants = match.participants.all()
         for p in participants:
-            if match.match_status == 'closed':
+            if is_failed:
                 msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。"
             else:
                 msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
@@ -1218,6 +1229,10 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 match=match,
                 message=msg
             )
+
+        if is_failed:
+            match.delete()
+            return Response({"detail": "球局因場地預約失敗已取消並刪除。"}, status=status.HTTP_200_OK)
 
         # 回傳完整的球局資料，方便前端同步
         serializer = self.get_serializer(match)
