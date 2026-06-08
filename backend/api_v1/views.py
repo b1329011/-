@@ -300,13 +300,49 @@ class SportViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
 class VenueViewSet(viewsets.ModelViewSet):
-    queryset = Venue.objects.all()
     serializer_class = VenueSerializer
 
+    def get_queryset(self):
+        queryset = Venue.objects.select_related('address').prefetch_related('facilities').all()
+        city = self.request.query_params.get('city')
+        district = self.request.query_params.get('district')
+        if city:
+            queryset = queryset.filter(address__city__icontains=city)
+        if district:
+            queryset = queryset.filter(address__district__icontains=district)
+        return queryset
+
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'regions']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], url_path='regions')
+    def regions(self, request):
+        """
+        Returns venues grouped by City and District, matching the frontend's expected structure.
+        """
+        venues = self.get_queryset()
+        regions_data = {}
+        
+        for v in venues:
+            if not v.address:
+                continue
+            city = v.address.city
+            district = v.address.district
+            
+            if city not in regions_data:
+                regions_data[city] = {}
+            if district not in regions_data[city]:
+                regions_data[city][district] = []
+            
+            regions_data[city][district].append({
+                "id": v.id,
+                "name": v.name,
+                "facilities": [f.name for f in v.facilities.all()]
+            })
+            
+        return Response(regions_data, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
         venue = self.get_object()
@@ -365,8 +401,15 @@ class VenueViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
 class CourtViewSet(viewsets.ModelViewSet):
-    queryset = Court.objects.all()
     serializer_class = CourtSerializer
+
+    def get_queryset(self):
+        return Court.objects.select_related(
+            'venue__address'
+        ).prefetch_related(
+            'venue__facilities',
+            'sports'
+        ).all()
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
