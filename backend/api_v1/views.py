@@ -461,7 +461,9 @@ def get_match_start_datetime(match):
 def get_match_end_datetime(match):
     """
     Given a GameMatch, return its timezone-aware end datetime.
+    Handles midnight crossing by checking if end_time < start_time.
     """
+    start_dt = get_match_start_datetime(match)
     end_time = timezone.datetime.max.time()
     if match.time_slot and '-' in match.time_slot:
         parts = match.time_slot.split('-')
@@ -473,7 +475,14 @@ def get_match_end_datetime(match):
                     break
                 except ValueError:
                     pass
-    return timezone.make_aware(timezone.datetime.combine(match.booking_date, end_time))
+    
+    end_dt = timezone.make_aware(timezone.datetime.combine(match.booking_date, end_time))
+    
+    # If end time is numerically before start time, it means it ends the next day
+    if end_dt <= start_dt:
+        end_dt += timezone.timedelta(days=1)
+        
+    return end_dt
 
 def update_all_match_statuses():
     """
