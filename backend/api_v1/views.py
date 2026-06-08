@@ -582,7 +582,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             'sport', 'court__venue__address', 'creator'
         ).prefetch_related(
             'participants__user'
-        ).all()
+        ).all().order_by('-id')
 
         sport_id = self.request.query_params.get('sport_id')
         target_level = self.request.query_params.get('target_level')
@@ -622,10 +622,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(target_level__icontains=level)
 
         # Filter by start time / participation if action is list
-        # Only return:
-        # - Matches that have not started yet (now < start_time)
-        # - Matches that have started but not ended yet (start_time <= now < end_time) AND user is a participant
-        # - Exclude ended matches (now >= end_time) completely.
         if getattr(self, 'action', None) == 'list':
             now = timezone.now()
             user = self.request.user
@@ -647,7 +643,14 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         any(p.user_id == user.id for p in match.participants.all())
                     )
                 
-                if not has_started or is_participant:
+                # Logic: 
+                # 1. Creators always see their own matches
+                # 2. Participants always see their matches
+                # 3. Non-participants see matches that haven't ended AND (haven't started OR are still recruiting/full)
+                # This ensures "just started" matches don't disappear if they are still open.
+                if is_participant:
+                    valid_ids.append(match.id)
+                elif not has_started or match.match_status in ['recruiting', 'full']:
                     valid_ids.append(match.id)
             
             queryset = queryset.filter(id__in=valid_ids)
