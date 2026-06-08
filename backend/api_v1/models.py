@@ -40,6 +40,7 @@ class User(AbstractBaseUser):
     bio = models.TextField(null=True, blank=True)
     line_id = models.CharField(max_length=50, null=True, blank=True)
     instagram = models.CharField(max_length=50, null=True, blank=True)
+    last_credit_update = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()
 
