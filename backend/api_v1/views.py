@@ -1187,7 +1187,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             return Response({"detail": "只有主揪才能回報場地狀態。"}, status=status.HTTP_403_FORBIDDEN)
 
         status_val = request.data.get('status')
-        note_val = request.data.get('note', '')
 
         if not status_val:
             return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1200,19 +1199,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         }
         db_status = status_map.get(status_val, status_val)
 
-        # 過濾掉佔位用的備註值（如 'CONFIRMED' 或 'FAILED'）
-        clean_note = note_val
-        if clean_note and clean_note.strip().upper() in ['CONFIRMED', 'FAILED']:
-            clean_note = ''
-
         match.booking_status = db_status
-        match.game_note = clean_note
         
-        # 更新 game_note 作為前端判斷狀態的備援訊號 (需精確匹配 'CONFIRMED' 或 'FAILED')
-        if status_val == 'confirmed' or db_status == '已確認/已預約':
-            match.game_note = 'CONFIRMED'
-        elif status_val == 'failed' or db_status == '未借到場地':
-            match.game_note = 'FAILED'
+        if status_val == 'failed' or db_status == '未借到場地':
             match.match_status = 'closed'
             
         match.save()
@@ -1221,9 +1210,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         participants = match.participants.all()
         for p in participants:
             if match.match_status == 'closed':
-                msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。說明：{match.game_note or '無'}"
+                msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。"
             else:
-                msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.game_note or '無'}"
+                msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
             Notification.objects.create(
                 user=p.user,
                 match=match,
