@@ -295,7 +295,10 @@ function PartyDetail() {
     // Frontend proactive gender check
     if (party.genderLimit && party.genderLimit !== '不限') {
       const gender = userGender || '未公開';
-      if (gender !== party.genderLimit) {
+      if (
+        (party.genderLimit === '限男' && gender !== '男') ||
+        (party.genderLimit === '限女' && gender !== '女')
+      ) {
         alert(`此揪團${party.genderLimit}，您的性別為「${gender}」，無法加入或候補！`);
         return;
       }

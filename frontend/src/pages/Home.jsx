@@ -207,7 +207,10 @@ function Home() {
 
     if (newParty.genderLimit && newParty.genderLimit !== '不限') {
       const userGender = userProfile?.gender || '未公開';
-      if (userGender !== newParty.genderLimit) {
+      if (
+        (newParty.genderLimit === '限男' && userGender !== '男') ||
+        (newParty.genderLimit === '限女' && userGender !== '女')
+      ) {
         alert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
         return;
       }
