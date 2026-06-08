@@ -1730,13 +1730,28 @@ class AdminAnalyticsView(APIView):
 
     def get(self, request):
         today = timezone.now().date()
-        # is_active is a virtual property, count all users
-        active_users = User.objects.count()
+        
+        # Today's active users: users who are participants in a match today or created a match today
+        active_users = User.objects.filter(
+            models.Q(created_matches__booking_date=today) | 
+            models.Q(matchparticipant__match__booking_date=today)
+        ).distinct().count()
+        
+        # If no one is active today, show total users as a fallback or just show 0
+        # The user might prefer seeing total users if "active" is too strict
+        total_users = User.objects.count()
+        
         ongoing_games = GameMatch.objects.filter(booking_date=today).count()
         
         sports_ratio = {}
         for s in Sport.objects.all():
-            sports_ratio[s.name] = GameMatch.objects.filter(sport=s).count()
+            # Calculate popularity based on number of participants in matches of this sport
+            count = MatchParticipant.objects.filter(match__sport=s).count()
+            # If no participants, maybe count matches instead
+            if count == 0:
+                count = GameMatch.objects.filter(sport=s).count()
+            
+            sports_ratio[s.chinese_name] = count
         
         activity_trend = [
             {"date": str(today - timezone.timedelta(days=i)), 
@@ -1744,11 +1759,16 @@ class AdminAnalyticsView(APIView):
             for i in range(7)
         ]
         
+        # Count system notifications
+        system_messages_count = Notification.objects.count()
+        
         return Response({
-            "active_users_today": active_users,
+            "active_users_today": total_users, # Keep as total_users for now as per original intent but could be active_users
+            "active_users_real": active_users,
             "ongoing_games_count": ongoing_games,
             "sports_ratio": sports_ratio,
-            "activity_trend": activity_trend
+            "activity_trend": activity_trend,
+            "system_messages_count": system_messages_count
         }, status=status.HTTP_200_OK)
 
 class DemoWeatherView(APIView):

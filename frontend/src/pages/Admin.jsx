@@ -54,7 +54,7 @@ function Admin() {
         const mappedAnalytics = {
           active_users: analyticsData.active_users_today || 0,
           active_games: analyticsData.ongoing_games_count || 0,
-          system_messages: 0, // 後端未提供，預設為 0
+          system_messages: analyticsData.system_messages_count || 0,
           daily_activity: [],
           popular_sports: []
         };
