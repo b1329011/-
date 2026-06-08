@@ -40,6 +40,7 @@ class User(AbstractBaseUser):
     bio = models.TextField(null=True, blank=True)
     line_id = models.CharField(max_length=50, null=True, blank=True)
     instagram = models.CharField(max_length=50, null=True, blank=True)
+    last_credit_update = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()
 
@@ -231,8 +232,8 @@ class GameMatch(models.Model):
         ('高手', '高手'),
     )
     BOOKING_STATUS_CHOICES = (
-        ('已確認/已預約', '已確認/已預約'),
-        ('未借到場地', '未借到場地'),
+        ('已佔到/已預約', '已佔到/已預約'),
+        ('未佔到/未預約', '未佔到/未預約'),
         ('未確認', '未確認'),
     )
     id = models.AutoField(primary_key=True, db_column='game_id')
@@ -253,7 +254,6 @@ class GameMatch(models.Model):
     air_index = models.IntegerField(null=True, blank=True)
     booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未確認')
     game_note = models.TextField(null=True, blank=True, db_column='game_note')
-    venue_note = models.TextField(null=True, blank=True, db_column='venue_note')
     gender_limit = models.CharField(max_length=20, default='不限')
 
     @property
@@ -394,7 +394,7 @@ class Blacklist(models.Model):
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications', null=True, blank=True)
-    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications')
+    match = models.ForeignKey(GameMatch, on_delete=models.SET_NULL, db_column='game_id', related_name='notifications', null=True, blank=True)
     message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

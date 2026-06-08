@@ -118,6 +118,17 @@ def check_and_create_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
 
+        # Check if last_credit_update column exists in users table in MySQL
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = 'users' 
+              AND COLUMN_NAME = 'last_credit_update'
+        """)
+        if cursor.fetchone()[0] == 0:
+            print_log("[Init] Adding missing last_credit_update column to users table in MySQL...")
+            cursor.execute("ALTER TABLE `users` ADD COLUMN `last_credit_update` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)")
+
 def initialize_db():
     check_and_create_tables()
 
@@ -242,7 +253,7 @@ def run_tests():
         "sport_id": 2,  # 羽球
         "court_id": 1,
         "most_players": 4,
-        "target_level": "A",
+        "target_level": "高手",
         "booking_date": tomorrow,
         "start_time": "18:00",
         "duration": "2 小時",
@@ -412,7 +423,7 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": yesterday,
         "start_time": "10:00",
         "duration": "2 小時",
@@ -427,7 +438,7 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "2 小時",
@@ -442,7 +453,7 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "2 小時",
@@ -457,7 +468,7 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "不限時間",
@@ -472,7 +483,7 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "25 小時",
@@ -488,7 +499,7 @@ def run_tests():
         "court_id": 1,
         "least_players": 4,
         "most_players": 2,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "2 小時",
@@ -503,13 +514,128 @@ def run_tests():
         "sport_id": 2,
         "court_id": 1,
         "most_players": 4,
-        "target_level": "B",
+        "target_level": "業餘",
         "booking_date": tomorrow,
         "start_time": "10:00",
         "duration": "2 小時",
         "total_price": 500.0,
         "gender_limit": "男女"
     }, token=token_b)
+
+    # 3.8 發起與加入限性別球局防呆測試 (限男、限女限制)
+    print_log("\n👉 [性別限制測試] 註冊女生帳號 C 並完善個人檔案：")
+    status, reg_res_c = make_request("/auth/register/", "POST", data={
+        "email": "user_c@example.com",
+        "password": "Password123!",
+        "name": "陳女生"
+    })
+    token_c = reg_res_c["token"]
+    
+    # 完善 C 檔案，性別設為 "女"
+    status, _ = make_request("/users/profile/", "PUT", data={
+        "name": "陳女生",
+        "phone": "0933444555",
+        "birthday": "2002-08-15",
+        "gender": "女",
+        "levels": {
+            "羽球": "A",
+            "籃球": "B"
+        }
+    }, token=token_c)
+
+    print_log("\n👉 測試：男生 (User B) 嘗試發起限女球局 (應失敗)：")
+    status, res = make_request("/games/", "POST", data={
+        "game_name": "男生發起限女團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限女"
+    }, token=token_b)
+    if status == 400:
+        print_log("✅ 成功阻擋：男生發起限女球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：男生發起限女球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 嘗試發起限男球局 (應失敗)：")
+    status, res = make_request("/games/", "POST", data={
+        "game_name": "女生發起限男團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限男"
+    }, token=token_c)
+    if status == 400:
+        print_log("✅ 成功阻擋：女生發起限男球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：女生發起限男球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：男生 (User B) 成功發起限男球局：")
+    status, game_male = make_request("/games/", "POST", data={
+        "game_name": "男生發起限男團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限男"
+    }, token=token_b)
+    if status == 201:
+        print_log("✅ 成功：男生成功發起限男球局！")
+        male_game_id = game_male["id"]
+    else:
+        print_log(f"❌ 錯誤：男生發起限男球局失敗 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 嘗試加入限男球局 (應失敗)：")
+    status, res = make_request(f"/games/{male_game_id}/join/", "POST", token=token_c)
+    if status == 400:
+        print_log("✅ 成功阻擋：女生加入限男球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：女生加入限男球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 成功發起限女球局：")
+    status, game_female = make_request("/games/", "POST", data={
+        "game_name": "女生發起限女團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限女"
+    }, token=token_c)
+    if status == 201:
+        print_log("✅ 成功：女生成功發起限女球局！")
+        female_game_id = game_female["id"]
+    else:
+        print_log(f"❌ 錯誤：女生發起限女球局失敗 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：男生 (User B) 嘗試加入限女球局 (應失敗)：")
+    status, res = make_request(f"/games/{female_game_id}/join/", "POST", token=token_b)
+    if status == 400:
+        print_log("✅ 成功阻擋：男生加入限女球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：男生加入限女球局回傳狀態為 {status}")
+        sys.exit(1)
 
     # ========================================================
     # PART 4: 測試 GET /api/games/ 隱私與時間過濾邏輯
@@ -686,24 +812,27 @@ def run_tests():
     # 重新載入球局狀態
     match_24h.refresh_from_db()
     match_started.refresh_from_db()
-    match_failed.refresh_from_db()
     match_ended.refresh_from_db()
+    
+    match_failed_id = match_failed.id
+    match_failed_exists = GameMatch.objects.filter(id=match_failed_id).exists()
 
     print_log(f"   24h球局狀態 (預期 recruiting/full): {match_24h.match_status}")
     print_log(f"   已開始成團球局狀態 (預期 started): {match_started.match_status}")
-    print_log(f"   人數不足流局球局狀態 (預期 closed): {match_failed.match_status}")
+    print_log(f"   人數不足流局球局 (預期已刪除): {'存在' if match_failed_exists else '已物理刪除'}")
     print_log(f"   已結束自動關閉球局狀態 (預期 closed): {match_ended.match_status}")
 
     # 驗證狀態值
-    if match_failed.match_status == 'closed' and match_ended.match_status == 'closed' and match_started.match_status == 'started':
-        print_log("✅ 成功：球局狀態機狀態移轉正確！")
+    if not match_failed_exists and match_ended.match_status == 'closed' and match_started.match_status == 'started':
+        print_log("✅ 成功：球局狀態機狀態移轉與物理刪除正確！")
     else:
-        print_log("❌ 錯誤：球局狀態機狀態移轉不正確！")
+        print_log("❌ 錯誤：球局狀態機狀態移轉或刪除不正確！")
 
-    # 驗證通知發送
+    # 驗證通知發送 (對已刪除球局，我們不帶 match 條件查，改查 message)
     notif_24h = Notification.objects.filter(user=user_a, match=match_24h, message__contains="將在 24 小時內開始").exists()
     notif_started = Notification.objects.filter(user=user_a, match=match_started, message__contains="已經開始").exists()
-    notif_failed = Notification.objects.filter(user=user_a, match=match_failed, message__contains="因人數未達下限").exists()
+    # match_failed 已刪除，故 match 外鍵應為 None (SET_NULL)
+    notif_failed = Notification.objects.filter(user=user_a, match__isnull=True, message__contains="因人數未達下限").exists()
     notif_ended = Notification.objects.filter(user=user_a, match=match_ended, message__contains="已順利結束").exists()
 
     print_log(f"   24h球局通知發送情況 (預期 True): {notif_24h}")
@@ -715,6 +844,19 @@ def run_tests():
         print_log("✅ 成功：球局狀態機通知發送全部正確！")
     else:
         print_log("❌ 錯誤：球局狀態機通知發送不正確！")
+
+    # 測試個人歷史球局 API
+    print_log("\n👉 測試：GET /api/games/history/ (個人歷史成團球局)：")
+    status, history = make_request("/games/history/", token=token_a)
+    if status == 200:
+        has_ended = any(h["id"] == match_ended.id for h in history)
+        has_failed = any(h["id"] == match_failed_id for h in history)
+        if has_ended and not has_failed:
+            print_log("✅ 成功：歷史球局 API 僅回傳成功結束之球局，不包含流局。")
+        else:
+            print_log(f"❌ 錯誤：歷史球局回傳結果不正確！包含流局: {has_failed}, 漏掉結束球局: {not has_ended}")
+    else:
+        print_log(f"❌ 錯誤：歷史球局 API 回傳狀態碼 {status}")
         
     # 重複呼叫狀態機，驗證防重複通知邏輯
     count_before = Notification.objects.filter(user=user_a, match=match_24h).count()
@@ -725,14 +867,252 @@ def run_tests():
     else:
         print_log("❌ 錯誤：重複觸發狀態機產生了重複通知！")
 
+    # ========================================================
+    # PART 6: 測試自動扣分檢舉系統與停權/警告機制
+    # ========================================================
+    print_header("PART 6: 測試自動扣分檢舉系統與停權/警告機制")
+    
+    # User B 檢舉 User A 為「騷擾與人身攻擊」 (-30 分)
+    # A 原先 100 分 -> 變成 70 分
+    print_log("\n👉 [6.1] B 檢舉 A 騷擾與人身攻擊 (-30 分)：")
+    report_payload_1 = {
+        "game_id": match_started.id,
+        "reported_user_id": user_id_a,
+        "reason": "騷擾與人身攻擊",
+        "detail": "發送不當言論騷擾人"
+    }
+    status, rep_res_1 = make_request("/reports/", "POST", data=report_payload_1, token=token_b)
+    if status == 201:
+        print_log("✅ 檢舉成功提交！")
+    else:
+        print_log(f"❌ 檢舉提交失敗：{status}")
+
+    # 驗證 A 的信譽分數是否為 70
+    from django.contrib.auth import get_user_model
+    UserModel = get_user_model()
+    user_a_db = UserModel.objects.get(id=user_id_a)
+    print_log(f"   A 的信譽分數 (預期 70): {user_a_db.credit_point}")
+    
+    # 驗證 A 是否收到扣分通知
+    notif_deduct = Notification.objects.filter(user=user_a_db, message__contains="信譽扣分通知").exists()
+    print_log(f"   A 是否收到扣分通知 (預期 True): {notif_deduct}")
+
+    # B 檢舉 A 為「直銷」 (-15 分)
+    # A 變成 55 分 -> 低於 60，應收到警告，且不能創房間
+    print_log("\n👉 [6.2] B 檢舉 A 直銷 (-15 分，A 降至 55 分)：")
+    report_payload_2 = {
+        "game_id": match_24h.id,
+        "reported_user_id": user_id_a,
+        "reason": "直銷",
+        "detail": "推廣不實健康食品"
+    }
+    status, rep_res_2 = make_request("/reports/", "POST", data=report_payload_2, token=token_b)
+    
+    user_a_db.refresh_from_db()
+    print_log(f"   A 的信譽分數 (預期 55): {user_a_db.credit_point}")
+    
+    # 驗證 A 是否收到警告通知
+    notif_warn = Notification.objects.filter(user=user_a_db, message__contains="信譽警告").exists()
+    print_log(f"   A 是否收到信譽警告通知 (預期 True): {notif_warn}")
+
+    # 驗證 A 此時發起球局是否被阻擋 (403)
+    print_log("👉 測試：A (信譽分 55) 試圖發起新球局 (預期 403 被阻擋)：")
+    game_payload_fail = {
+        "game_name": "被限制創房的球局",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "不限"
+    }
+    status, _ = make_request("/games/", "POST", data=game_payload_fail, token=token_a)
+    if status == 403:
+        print_log("✅ 成功阻擋：A 因信譽分低於 60 無法發起球局！")
+    else:
+        print_log(f"❌ 錯誤：A 發起球局回傳狀態為 {status}，未成功阻擋！")
+
+    # B 檢舉 A 為「肢體暴力」 (-60 分)
+    # A 變成 0 分 -> 低於 40，應被永久停權，登入與所有操作均回傳 403
+    print_log("\n👉 [6.3] B 檢舉 A 肢體暴力 (-60 分，A 降至 0 分，觸發永久停權)：")
+    report_payload_3 = {
+        "game_id": match_ended.id,
+        "reported_user_id": user_id_a,
+        "reason": "肢體暴力",
+        "detail": "在場上動粗"
+    }
+    status, rep_res_3 = make_request("/reports/", "POST", data=report_payload_3, token=token_b)
+    
+    user_a_db.refresh_from_db()
+    print_log(f"   A 的信譽分數 (預期 0): {user_a_db.credit_point}")
+    
+    # 驗證 A 帳號已被加入黑名單
+    from api_v1.models import Blacklist
+    is_banned = Blacklist.objects.filter(user=user_a_db).exists()
+    print_log(f"   A 是否在黑名單中 (預期 True): {is_banned}")
+
+    # 驗證 A 此時發送 any API 請求都會被阻擋 (403 永久停權)
+    print_log("👉 測試：A (已停權) 試圖獲取個人檔案 (預期 403 停權限制)：")
+    status, profile_fail = make_request("/users/profile/", "GET", token=token_a)
+    if status == 403:
+        print_log("✅ 成功阻擋：已停權帳號任何 API 操作皆回傳 403！")
+    else:
+        print_log(f"❌ 錯誤：已停權帳號操作回傳狀態為 {status}，未成功阻擋！")
+
+    # 測試每日恢復信譽分數 (+0.5/day -> 2天恢復 1 分)
+    print_log("\n👉 [6.4] 測試信譽分數每日恢復邏輯 (+0.5/day)：")
+    # 將 A 的分數修改為 50，且 last_credit_update 修改為 4 定天前 (這裡設定 days=4)
+    user_a_db.credit_point = 50
+    user_a_db.last_credit_update = timezone.now() - datetime.timedelta(days=4)
+    user_a_db.save()
+    
+    # 呼叫獲取個人檔案 API (會自動觸發 IsNotBanned 中的 check_and_update_credit 邏輯)
+    print_log("👉 模擬過了 4 天後獲取個人檔案：")
+    status, profile_res = make_request("/users/profile/", "GET", token=token_a)
+    
+    user_a_db.refresh_from_db()
+    # 4 天前，每天 0.5 分，應恢復 2 分，分數應變成 52
+    print_log(f"   A 的新信譽分數 (預期 52): {user_a_db.credit_point}")
+    if user_a_db.credit_point == 52:
+        print_log("✅ 成功：每日自動恢復邏輯正確運作！")
+    else:
+        print_log(f"❌ 錯誤：信譽分數恢復不正確！")
+
+    # ========================================================
+    # PART 6.5: 測試主揪檢舉與扣分機制
+    # ========================================================
+    print_header("PART 6.5: 測試主揪檢舉與扣分機制")
+    
+    # 初始化 A 分數為 100 分，以便測試扣分累積
+    user_a_db.credit_point = 100
+    user_a_db.save()
+    
+    # 建立主揪檢舉測試專用球局
+    host_match_1 = GameMatch.objects.create(
+        game_name="主揪檢舉測試球局1",
+        creator=user_a_db,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=tomorrow,
+        time_slot="14:00-16:00",
+        total_price=500.0
+    )
+    host_match_2 = GameMatch.objects.create(
+        game_name="主揪檢舉測試球局2",
+        creator=user_a_db,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=tomorrow,
+        time_slot="16:00-18:00",
+        total_price=500.0
+    )
+    host_match_3 = GameMatch.objects.create(
+        game_name="主揪檢舉測試球局3",
+        creator=user_a_db,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=tomorrow,
+        time_slot="18:00-20:00",
+        total_price=500.0
+    )
+
+    # 1. 檢舉主揪「惡意抬價」 (-25 分)
+    print_log("\n👉 [6.5.1] B 檢舉主揪 A 惡意抬價 (-25 分)：")
+    report_payload_h1 = {
+        "game_id": host_match_1.id,
+        "reported_user_id": user_id_a,
+        "reason": "惡意抬價",
+        "detail": "超出合理分攤費用"
+    }
+    status, rep_res_h1 = make_request("/reports/", "POST", data=report_payload_h1, token=token_b)
+    if status == 201:
+        print_log("✅ 檢舉成功提交！")
+    else:
+        print_log(f"❌ 檢舉提交失敗：{status}")
+
+    user_a_db.refresh_from_db()
+    print_log(f"   A 的信譽分數 (預期 75): {user_a_db.credit_point}")
+    
+    # 2. 檢舉主揪「沒預約場地」 (-30 分) -> A 降至 45 分，低於 60 限制創房
+    print_log("\n👉 [6.5.2] B 檢舉主揪 A 沒預約場地 (-30 分，A 降至 45 分)：")
+    report_payload_h2 = {
+        "game_id": host_match_2.id,
+        "reported_user_id": user_id_a,
+        "reason": "沒預約場地",
+        "detail": "謊稱借到場地"
+    }
+    status, rep_res_h2 = make_request("/reports/", "POST", data=report_payload_h2, token=token_b)
+    
+    user_a_db.refresh_from_db()
+    print_log(f"   A 的信譽分數 (預期 45): {user_a_db.credit_point}")
+    
+    # 驗證 A 此時發起球局是否被阻擋 (403)
+    print_log("👉 測試：A (信譽分 45) 試圖發起新球局 (預期 403 被阻擋)：")
+    game_payload_fail = {
+        "game_name": "被限制創房的球局",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "業餘",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "不限"
+    }
+    status, _ = make_request("/games/", "POST", data=game_payload_fail, token=token_a)
+    if status == 403:
+        print_log("✅ 成功阻擋：A 因信譽分低於 60 無法發起球局！")
+    else:
+        print_log(f"❌ 錯誤：A 發起球局回傳狀態為 {status}，未成功阻擋！")
+
+    # 3. 檢舉主揪「未出現」 (-30 分) -> A 降至 15 分，低於 40 被永久停權
+    print_log("\n👉 [6.5.3] B 檢舉主揪 A 未出現 (-30 分，A 降至 15 分，觸發永久停權)：")
+    report_payload_h3 = {
+        "game_id": host_match_3.id,
+        "reported_user_id": user_id_a,
+        "reason": "未出現",
+        "detail": "主揪放鴿子"
+    }
+    status, rep_res_h3 = make_request("/reports/", "POST", data=report_payload_h3, token=token_b)
+    
+    user_a_db.refresh_from_db()
+    print_log(f"   A 的信譽分數 (預期 15): {user_a_db.credit_point}")
+    
+    # 驗證 A 帳號已被加入黑名單
+    is_banned = Blacklist.objects.filter(user=user_a_db).exists()
+    print_log(f"   A 是否在黑名單中 (預期 True): {is_banned}")
+
+    # 驗證 A 此時發送 any API 請求都會被阻擋 (403 永久停權)
+    print_log("👉 測試：A (已停權) 試圖獲取個人檔案 (預期 403 停權限制)：")
+    status, profile_fail = make_request("/users/profile/", "GET", token=token_a)
+    if status == 403:
+        print_log("✅ 成功阻擋：已停權帳號任何 API 操作皆回傳 403！")
+    else:
+        print_log(f"❌ 錯誤：已停權帳號操作回傳狀態為 {status}，未成功阻擋！")
+
     print_log("\n" + "=" * 60)
     print_log("🎉 1st Stage API 測試全數執行完畢！")
     print_log("=" * 60 + "\n")
 
+
+
 def cleanup_db():
     print_log("[Cleanup] Cleaning up test data from Database...")
     try:
-        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com", "user_c@example.com"]
         deleted_count, details = User.objects.filter(email__in=test_emails).delete()
         print_log(f"[Cleanup] Deleted test users and cascaded objects: {deleted_count} ({details})")
     except Exception as e:

@@ -111,6 +111,17 @@ def check_and_create_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
 
+        # Check if last_credit_update column exists in users table in MySQL
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = 'users' 
+              AND COLUMN_NAME = 'last_credit_update'
+        """)
+        if cursor.fetchone()[0] == 0:
+            print_log("[Init] Adding missing last_credit_update column to users table in MySQL...")
+            cursor.execute("ALTER TABLE `users` ADD COLUMN `last_credit_update` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)")
+
 def initialize_db():
     check_and_create_tables()
     print_log("[Init] Cleaning test users for bulletins test run...")
@@ -168,7 +179,7 @@ def run_tests():
         "phone": "0900222222",
         "birthday": "2000-01-02",
         "gender": "女",
-        "levels": {"羽球": "B"}
+        "levels": {"羽球": "A"}
     }, token=token_b)
 
     # 3. A 發起球局
@@ -179,7 +190,7 @@ def run_tests():
         "sport_id": 2,  # 羽球 (已預先載入)
         "court_id": 1,
         "most_players": 4,
-        "target_level": "A",
+        "target_level": "高手",
         "booking_date": tomorrow,
         "start_time": "19:00",
         "duration": "2 小時",

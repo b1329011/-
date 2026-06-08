@@ -111,13 +111,15 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
 
 # Check MySQL status
 import os
-mysql_available, reason = check_mysql_availability()
+db_host = os.environ.get('DB_HOST', 'localhost')
+db_port = int(os.environ.get('DB_PORT', '3306'))
+mysql_available, reason = check_mysql_availability(host=db_host, port=db_port, timeout=5.0)
 if os.environ.get('FORCE_SQLITE') == 'True':
     mysql_available = False
     reason = "Forced by FORCE_SQLITE environment variable"
 
 if mysql_available:
-    print("[Database] MySQL detected! Using MySQL database ('nojo').")
+    print(f"[Database] MySQL detected at {db_host}:{db_port}! Using MySQL database.")
     
     # 繞過 MariaDB 10.5+ 版本限制以相容 XAMPP (MariaDB 10.4.32)
     from django.db.backends.base.base import BaseDatabaseWrapper
@@ -129,8 +131,6 @@ if mysql_available:
         lambda self: self.connection.mysql_is_mariadb and self.connection.mysql_version >= (10, 5, 0)
     )
     
-    db_host = os.environ.get('DB_HOST', 'localhost')
-    db_port = os.environ.get('DB_PORT', '3306')
     db_user = os.environ.get('DB_USER', 'root')
     db_password = os.environ.get('DB_PASSWORD', '')
 
@@ -141,7 +141,7 @@ if mysql_available:
             'USER': db_user,
             'PASSWORD': db_password,
             'HOST': db_host,
-            'PORT': db_port,
+            'PORT': str(db_port),
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
@@ -152,7 +152,7 @@ if mysql_available:
             'USER': db_user,
             'PASSWORD': db_password,
             'HOST': db_host,
-            'PORT': db_port,
+            'PORT': str(db_port),
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }

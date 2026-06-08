@@ -18,6 +18,16 @@ const venuesApi = {
       console.error('取得球場列表失敗:', error);
       throw error;
     }
+  },
+  /**
+   * 回報場地異常 (使用者或主揪均可)
+   * @param {number|string} venueId 
+   * @param {number|string} courtId 
+   * @param {Object} data - { issue_type, description }
+   * @returns {Promise}
+   */
+  reportCourtStatus: (venueId, courtId, data) => {
+    return axiosClient.post(`/venues/${venueId}/courts/${courtId}/report-status/`, data);
   }
 };
 

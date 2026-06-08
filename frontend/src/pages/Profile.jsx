@@ -63,6 +63,17 @@ function Profile() {
           const rawGames = Array.isArray(gamesData.results) ? gamesData.results : (Array.isArray(gamesData) ? gamesData : []);
           const currentUserId = localStorage.getItem('user_id');
           
+          const reverseLevelMap = {
+            'C': '休閒',
+            'B': '業餘',
+            'A': '高手',
+            'S': '高手',
+            '新手': '休閒',
+            '休閒': '休閒',
+            '業餘': '業餘',
+            '高手': '高手'
+          };
+          
           const userGames = rawGames.filter(party => {
             const isHost = party.creator_id && String(party.creator_id) === String(currentUserId);
             const isParticipant = party.participant_ids?.some(id => String(id) === String(currentUserId));
@@ -70,7 +81,8 @@ function Profile() {
             return isHost || isParticipant || isWaitlisted;
           }).map(newGame => {
             const rawType = newGame.type || newGame.sport_type || newGame.sport_name || (newGame.sport?.name) || '未分類';
-            const rawLevel = newGame.level || newGame.target_level || 'C';
+            const originalLevel = newGame.level || newGame.target_level || 'C';
+            const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
             return {
               ...newGame,
               id: newGame.id,
@@ -80,7 +92,7 @@ function Profile() {
               genderLimit: newGame.genderLimit || newGame.gender_limit || '不限',
               location: newGame.location || newGame.venue_name || '未指定地點',
               description: newGame.description || newGame.game_note || '',
-              venue_note: newGame.venue_note || newGame.game_note || '',
+              game_note: newGame.game_note || '',
               currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
               maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
               currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
@@ -475,7 +487,7 @@ function Profile() {
                       </div>
                       <h3 className="party-title">{party.title}</h3>
                       <div className="party-info">
-                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}{party.venue_note ? ` (${party.venue_note})` : ''}</p>
+                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}</p>
                         <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
                       </div>
                       <div className="party-card-footer">

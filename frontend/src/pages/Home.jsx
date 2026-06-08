@@ -102,9 +102,9 @@ function Home() {
           const originalLevel = party.level || party.target_level || 'C';
           const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
           let venueStatus = 'pending';
-          if (party.booking_status === '已確認/已預約' || party.booking_status === '已預約/已確認' || party.booking_status === 'confirmed' || party.game_note === 'CONFIRMED') {
+          if (party.booking_status === '已佔到/已預約') {
             venueStatus = 'confirmed';
-          } else if (party.booking_status === '未借到場地' || party.booking_status === 'failed' || party.game_note === 'FAILED') {
+          } else if (party.booking_status === '未佔到/未預約') {
             venueStatus = 'failed';
           }
           
@@ -123,7 +123,7 @@ function Home() {
             currentWaitlist: party.currentWaitlist ?? party.current_waitlist ?? 0,
             maxWaitlist: party.maxWaitlist ?? party.max_waitlist ?? 2,
             description: party.game_note || party.description,
-            venue_note: party.venue_note || party.game_note,
+            game_note: party.game_note,
             participants: party.participants || [],
             participant_ids: party.participant_ids || [],
             waitlist_ids: party.waitlist_ids || [],
@@ -207,7 +207,10 @@ function Home() {
 
     if (newParty.genderLimit && newParty.genderLimit !== '不限') {
       const userGender = userProfile?.gender || '未公開';
-      if (userGender !== newParty.genderLimit) {
+      if (
+        (newParty.genderLimit === '限男' && userGender !== '男') ||
+        (newParty.genderLimit === '限女' && userGender !== '女')
+      ) {
         alert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
         return;
       }
@@ -277,7 +280,7 @@ function Home() {
       venue_id: venue_id,
       most_players: parseInt(newParty.maxPlayers, 10),
       least_players: parseInt(newParty.minPlayers, 10),
-      target_level: levelMap[newParty.level] || 'C',
+      target_level: newParty.level || '休閒',
       booking_date: booking_date,
       start_time: `${startHour}:${startMin}`,
       time_slot: time_slot,
@@ -647,6 +650,16 @@ function Home() {
                     )}
                     <span className="party-type">{party.type}</span>
                     <span className="party-level">{party.level}</span>
+                    {party.venueStatus === 'confirmed' && (
+                      <span className="party-level" style={{ backgroundColor: '#10b981', color: 'white', fontWeight: 'bold' }}>
+                        ✅ 場地已確認
+                      </span>
+                    )}
+                    {party.venueStatus === 'failed' && (
+                      <span className="party-level" style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold' }}>
+                        ❌ 未借到場地
+                      </span>
+                    )}
                     {party.genderLimit && party.genderLimit !== '不限' && (
                       <span className="party-level">{party.genderLimit}</span>
                     )}

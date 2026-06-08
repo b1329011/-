@@ -152,45 +152,19 @@ class GameMatchSerializer(serializers.ModelSerializer):
     announcements = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
-        lv_map = {
-            'S': '高手',
-            'A': '業餘',
-            'B': '業餘',
-            'C': '休閒',
-            'Elite': '高手',
-            'Veteran': '業餘',
-            'Advanced': '業餘',
-            'Beginner': '休閒',
-            'S(Elite)': '高手',
-            'A(Veteran)': '業餘',
-            'B(advanced)': '業餘',
-            'C(beginner)': '休閒',
-            'S(菁英)': '高手',
-            'A(高手)': '業餘',
-            'B(熟練)': '業餘',
-            'C(初學者)': '休閒',
-            '新手(CB可參加)': '休閒',
-            '高手(BA可參加)': '業餘',
-            '菁英(AS可參加)': '高手',
-            '休閒': '休閒',
-            '業餘': '業餘',
-            '高手': '高手',
-        }
-        if value in lv_map:
-            return lv_map[value]
         valid_values = [choice[0] for choice in GameMatch.LEVEL_CHOICES]
         if value in valid_values:
             return value
-        raise serializers.ValidationError("無效的等級名稱。")
+        raise serializers.ValidationError("無效的等級名稱，必須為 '休閒'、'業餘' 或 '高手'。")
 
     class Meta:
         model = GameMatch
         fields = [
             'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'venue_note',
+            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
-            'match_status', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
+            'match_status', 'participants', 'waitlist', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
@@ -228,11 +202,14 @@ class GameMatchSerializer(serializers.ModelSerializer):
         return [p.user.id for p in waitlisted_parts]
 
     def get_participants(self, obj):
-        # Fallback for old code if needed, but we'll try to avoid using it
-        return []
+        all_parts = obj.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:obj.most_players]
+        return MatchParticipantUserSerializer(regular_parts, many=True).data
 
     def get_waitlist(self, obj):
-        return []
+        all_parts = obj.participants.all().order_by('joined_at')
+        waitlisted_parts = all_parts[obj.most_players:]
+        return MatchParticipantUserSerializer(waitlisted_parts, many=True).data
 
     def validate_total_price(self, value):
         if value is not None and (value < 0 or value > 10000):
@@ -259,12 +236,27 @@ class GameMatchSerializer(serializers.ModelSerializer):
 
 
     def validate(self, attrs):
+        import datetime
         booking_date = attrs.get('booking_date')
         start_time_str = attrs.get('start_time')
         duration_str = attrs.get('duration')
         cancel_deadline = attrs.get('cancel_deadline')
         least_players = attrs.get('least_players')
         most_players = attrs.get('most_players')
+
+        # 性別限制校驗：男生不能發起/修改為限女生團，女生不能發起/修改為限男生團
+        gender_limit = attrs.get('gender_limit')
+        if self.instance and gender_limit is None:
+            gender_limit = self.instance.gender_limit
+            
+        if gender_limit and gender_limit != '不限':
+            request = self.context.get('request')
+            if request and request.user and request.user.is_authenticated:
+                user_gender = request.user.gender
+                if gender_limit == '限男' and user_gender != '男':
+                    raise serializers.ValidationError({"gender_limit": "男性專屬球局只能由男生發起。"})
+                elif gender_limit == '限女' and user_gender != '女':
+                    raise serializers.ValidationError({"gender_limit": "女性專屬球局只能由女生發起。"})
 
         if self.instance:
             if not booking_date:
@@ -283,9 +275,18 @@ class GameMatchSerializer(serializers.ModelSerializer):
             if least_players is None:
                 least_players = 1
 
+        # 解決前端跨日或早晨球局 (台北時間 00:00 - 08:00) 因使用 .toISOString() 轉換成 UTC Date 導致日期少一天的問題。
+        # 當傳入 booking_date 且其對應的 start_time 小時小於 8 時，自動將日期加一天以修正為正確的台北本地日期。
+        if 'booking_date' in attrs and start_time_str:
+            from django.utils.dateparse import parse_time
+            st = parse_time(start_time_str)
+            if st and st.hour < 8:
+                booking_date = booking_date + datetime.timedelta(days=1)
+                attrs['booking_date'] = booking_date
+
         # 1. 預約日期不能為過去
-        import datetime
-        if booking_date and booking_date < datetime.date.today():
+        from django.utils import timezone
+        if booking_date and booking_date < timezone.localdate():
             raise serializers.ValidationError({"booking_date": "球局預約日期不能為過去的日期。"})
 
         # 2. 人數限制校驗
