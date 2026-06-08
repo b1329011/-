@@ -187,10 +187,10 @@ class GameMatchSerializer(serializers.ModelSerializer):
         model = GameMatch
         fields = [
             'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'venue_note',
+            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
-            'match_status', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
+            'match_status', 'participants', 'waitlist', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
@@ -228,11 +228,14 @@ class GameMatchSerializer(serializers.ModelSerializer):
         return [p.user.id for p in waitlisted_parts]
 
     def get_participants(self, obj):
-        # Fallback for old code if needed, but we'll try to avoid using it
-        return []
+        all_parts = obj.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:obj.most_players]
+        return MatchParticipantUserSerializer(regular_parts, many=True).data
 
     def get_waitlist(self, obj):
-        return []
+        all_parts = obj.participants.all().order_by('joined_at')
+        waitlisted_parts = all_parts[obj.most_players:]
+        return MatchParticipantUserSerializer(waitlisted_parts, many=True).data
 
     def validate_total_price(self, value):
         if value is not None and (value < 0 or value > 10000):
@@ -259,6 +262,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
 
 
     def validate(self, attrs):
+        import datetime
         booking_date = attrs.get('booking_date')
         start_time_str = attrs.get('start_time')
         duration_str = attrs.get('duration')
@@ -283,9 +287,18 @@ class GameMatchSerializer(serializers.ModelSerializer):
             if least_players is None:
                 least_players = 1
 
+        # 解決前端跨日或早晨球局 (台北時間 00:00 - 08:00) 因使用 .toISOString() 轉換成 UTC Date 導致日期少一天的問題。
+        # 當傳入 booking_date 且其對應的 start_time 小時小於 8 時，自動將日期加一天以修正為正確的台北本地日期。
+        if 'booking_date' in attrs and start_time_str:
+            from django.utils.dateparse import parse_time
+            st = parse_time(start_time_str)
+            if st and st.hour < 8:
+                booking_date = booking_date + datetime.timedelta(days=1)
+                attrs['booking_date'] = booking_date
+
         # 1. 預約日期不能為過去
-        import datetime
-        if booking_date and booking_date < datetime.date.today():
+        from django.utils import timezone
+        if booking_date and booking_date < timezone.localdate():
             raise serializers.ValidationError({"booking_date": "球局預約日期不能為過去的日期。"})
 
         # 2. 人數限制校驗
