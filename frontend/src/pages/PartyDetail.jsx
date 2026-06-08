@@ -149,7 +149,6 @@ function PartyDetail() {
   }, [showListModal, party.id]);
   
   // 新增：場地狀態與檢舉功能狀態
-  const [isHostView, setIsHostView] = useState(isUserHost); // 根據是否為主揪動態切換
   const [isTimeApproaching, setIsTimeApproaching] = useState(false);
   const [userGender, setUserGender] = useState(null);
 
@@ -446,7 +445,7 @@ function PartyDetail() {
                 <span style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>地點</span>
                 <span style={{ fontWeight: '800', color: '#1e293b' }}>
                   {party.location}
-                  {party.venue_note && party.venue_note !== 'CONFIRMED' && party.venue_note !== 'FAILED' && <span style={{ marginLeft: '6px', color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({party.venue_note})</span>}
+                  {party.game_note && party.game_note !== 'CONFIRMED' && party.game_note !== 'FAILED' && <span style={{ marginLeft: '6px', color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({party.game_note})</span>}
                 </span>
               </div>
               </div>
@@ -490,7 +489,7 @@ function PartyDetail() {
             </div>
 
             {/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
-            {!isHostView && (
+            {!isUserHost && (
               <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', margin: '20px auto 12px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '8px', borderRadius: '8px', maxWidth: '600px' }}>
                 <span style={{ color: '#f59e0b' }}>⚠️</span> 取消截止時間：05/28 20:00，逾期將無法取消報名
               </div>
@@ -571,7 +570,7 @@ function PartyDetail() {
       {selectedMember && (
         <div className="modal-overlay" onClick={() => setSelectedMember(null)} style={{ zIndex: 1100 }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center', position: 'relative' }}>
-            {(isHostView || party.participants.some(p => p.name === '我 (使用者)')) && selectedMember.name !== '我 (使用者)' && selectedMember.name !== '我 (主揪)' && (
+            {(isUserHost || party.participants.some(p => p.name === '我 (使用者)')) && selectedMember.name !== '我 (使用者)' && selectedMember.name !== '我 (主揪)' && (
               reportedUsers.includes(selectedMember.name) ? (
                 <button 
                   disabled
