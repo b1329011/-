@@ -152,36 +152,10 @@ class GameMatchSerializer(serializers.ModelSerializer):
     announcements = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
-        lv_map = {
-            'S': '高手',
-            'A': '業餘',
-            'B': '業餘',
-            'C': '休閒',
-            'Elite': '高手',
-            'Veteran': '業餘',
-            'Advanced': '業餘',
-            'Beginner': '休閒',
-            'S(Elite)': '高手',
-            'A(Veteran)': '業餘',
-            'B(advanced)': '業餘',
-            'C(beginner)': '休閒',
-            'S(菁英)': '高手',
-            'A(高手)': '業餘',
-            'B(熟練)': '業餘',
-            'C(初學者)': '休閒',
-            '新手(CB可參加)': '休閒',
-            '高手(BA可參加)': '業餘',
-            '菁英(AS可參加)': '高手',
-            '休閒': '休閒',
-            '業餘': '業餘',
-            '高手': '高手',
-        }
-        if value in lv_map:
-            return lv_map[value]
         valid_values = [choice[0] for choice in GameMatch.LEVEL_CHOICES]
         if value in valid_values:
             return value
-        raise serializers.ValidationError("無效的等級名稱。")
+        raise serializers.ValidationError("無效的等級名稱，必須為 '休閒'、'業餘' 或 '高手'。")
 
     class Meta:
         model = GameMatch
