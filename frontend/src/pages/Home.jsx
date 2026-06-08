@@ -280,7 +280,7 @@ function Home() {
       venue_id: venue_id,
       most_players: parseInt(newParty.maxPlayers, 10),
       least_players: parseInt(newParty.minPlayers, 10),
-      target_level: levelMap[newParty.level] || 'C',
+      target_level: newParty.level || '休閒',
       booking_date: booking_date,
       start_time: `${startHour}:${startMin}`,
       time_slot: time_slot,
