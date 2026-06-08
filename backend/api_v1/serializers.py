@@ -102,8 +102,11 @@ class GameMatchSerializer(serializers.ModelSerializer):
     sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
     venue_name = serializers.CharField(source='court.venue.name', read_only=True)
     split_price = serializers.ReadOnlyField()
-    current_players = serializers.IntegerField(source='current_players_count', read_only=True)
-    participants = MatchParticipantUserSerializer(many=True, read_only=True)
+    current_players = serializers.SerializerMethodField()
+    current_waitlist = serializers.SerializerMethodField()
+    max_waitlist = serializers.SerializerMethodField()
+    participants = serializers.SerializerMethodField()
+    waitlist = serializers.SerializerMethodField()
     creator_id = serializers.ReadOnlyField(source='creator.id')
     distance_km = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, required=False)
     facilities = serializers.SerializerMethodField()
@@ -152,7 +155,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
-            'match_status', 'participants', 'creator_id', 'distance_km', 'facilities',
+            'match_status', 'participants', 'waitlist', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
@@ -165,6 +168,29 @@ class GameMatchSerializer(serializers.ModelSerializer):
     def get_announcements(self, obj):
         latest = obj.bulletins.order_by('-created_at').first()
         return latest.content if latest else ""
+
+    def get_current_players(self, obj):
+        cnt = obj.participants.count()
+        return min(cnt, obj.most_players)
+
+    def get_current_waitlist(self, obj):
+        cnt = obj.participants.count()
+        return max(0, cnt - obj.most_players)
+
+    def get_max_waitlist(self, obj):
+        import math
+        max_allowed = math.ceil(obj.most_players * 1.3)
+        return max_allowed - obj.most_players
+
+    def get_participants(self, obj):
+        all_parts = obj.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:obj.most_players]
+        return MatchParticipantUserSerializer(regular_parts, many=True).data
+
+    def get_waitlist(self, obj):
+        all_parts = obj.participants.all().order_by('joined_at')
+        waitlisted_parts = all_parts[obj.most_players:]
+        return MatchParticipantUserSerializer(waitlisted_parts, many=True).data
 
     def validate_total_price(self, value):
         if value is not None and (value < 0 or value > 10000):

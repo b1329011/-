@@ -390,6 +390,7 @@ class CourtViewSet(viewsets.ModelViewSet):
         
         for game in affected_games:
             Notification.objects.create(
+                user=game.creator,
                 match=game,
                 message=f"場地異常警告通知 ⚠️：您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
             )
@@ -549,6 +550,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         match = serializer.save()
         
         announcement_text = self.request.data.get('announcements')
+        new_bulletin_created = False
         if announcement_text:
             latest = match.bulletins.order_by('-created_at').first()
             if not latest or latest.content != announcement_text:
@@ -557,6 +559,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     title="公告",
                     content=announcement_text
                 )
+                new_bulletin_created = True
 
         Notification.objects.create(
             user=match.creator,
@@ -565,11 +568,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         )
         for p in match.participants.all():
             if p.user != match.creator:
-                Notification.objects.create(
-                    user=p.user,
-                    match=match,
-                    message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.chinese_name}」已被主揪修改了資訊，請查看最新時間與內容。"
-                )
+                if new_bulletin_created:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"球局公告通知 📢：您參與的球局「{match.sport.chinese_name}」有新公告：「{announcement_text}」"
+                    )
+                else:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.chinese_name}」已被主揪修改了資訊，請查看最新時間與內容。"
+                    )
 
     def destroy(self, request, *args, **kwargs):
         match = self.get_object()
