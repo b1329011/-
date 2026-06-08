@@ -1,6 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { MapPin, Clock, ArrowLeft, Timer, DollarSign, Info, CheckCircle2, Users, AlertTriangle, Eye, Bell, MessageCircle } from 'lucide-react';
+import gamesApi from '../api/games';
+import reportsApi from '../api/reports';
+import usersApi from '../api/users';
 import '../App.css';
 
 function PartyDetail() {
@@ -33,7 +36,29 @@ function PartyDetail() {
     const party = location.state?.party || defaultParty;
     const processedParty = { ...party };
 
-    // 確保 participants 是物件陣列格式
+    // Robust venue status determination to prevent asking for confirmation again
+    let currentVenueStatus = processedParty.venueStatus;
+    
+    // If not explicitly 'confirmed' or 'failed', try to deduce from backend strings
+    if (currentVenueStatus !== 'confirmed' && currentVenueStatus !== 'failed') {
+      const bs = processedParty.booking_status || processedParty.bookingStatus || '';
+      const gn = processedParty.game_note || processedParty.description || '';
+      
+      const confirmedKeywords = ['已確認/已預約', '已預約/已確認', '已確認', 'confirmed', 'CONFIRMED'];
+      const failedKeywords = ['未借到場地', '場地失敗', '未借到', 'failed', 'FAILED'];
+      
+      if (confirmedKeywords.some(kw => bs.includes(kw) || gn.includes(kw))) {
+        currentVenueStatus = 'confirmed';
+      } else if (failedKeywords.some(kw => bs.includes(kw) || gn.includes(kw))) {
+        currentVenueStatus = 'failed';
+      } else {
+        currentVenueStatus = 'pending';
+      }
+    }
+    
+    processedParty.venueStatus = currentVenueStatus;
+
+    // 確保 participants 是陣列格式
     if (processedParty.participants && typeof processedParty.participants[0] === 'string') {
       processedParty.participants = processedParty.participants.map((p, idx) => ({
         name: p,
@@ -56,22 +81,114 @@ function PartyDetail() {
   }, [location.state, defaultParty]);
 
   const [party, setParty] = useState(initialParty);
+
+  // 一進來就去後端拿最新的這筆球局資料，以防 location.state 的資料過舊（例如場地已確認但 state 沒更新）
+  useEffect(() => {
+    // 簡單判斷是否為真實後端 ID (通常會大於 10 或不是 mock ID)
+    if (!id || id === '1' || id === '2' || id === '3') return;
+    const fetchFreshParty = async () => {
+      try {
+        const freshData = await gamesApi.getGameById(id);
+        if (freshData) {
+          let venueStatus = 'pending';
+          if (freshData.booking_status === '已確認/已預約' || freshData.booking_status === '已預約/已確認' || freshData.booking_status === 'confirmed' || freshData.game_note === 'CONFIRMED') {
+            venueStatus = 'confirmed';
+          } else if (freshData.booking_status === '未借到場地' || freshData.booking_status === 'failed' || freshData.game_note === 'FAILED') {
+            venueStatus = 'failed';
+          }
+          
+          setParty(prev => ({
+            ...prev,
+            ...freshData,
+            venueStatus,
+            booking_status: freshData.booking_status,
+            game_note: freshData.game_note
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch fresh party data:", err);
+      }
+    };
+    fetchFreshParty();
+  }, [id]);
   
   // 判斷當前使用者是否為主揪或已加入
-  const isUserHost = initialParty.participants?.[0]?.name === '我 (主揪)' || initialParty.participants?.[0]?.name === '主揪人';
-  const initialHasJoined = isUserHost || 
-                           initialParty.participants?.some(p => p.name === '我 (使用者)') || 
-                           initialParty.waitlist?.some(p => p.name === '我 (使用者)');
+  const currentUserId = parseInt(localStorage.getItem('user_id'));
+  const isUserHost = (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+                     (party.participants && party.participants.length > 0 && (party.participants[0].name === '我 (主揪)' || party.participants[0].name === '主揪人' || party.participants[0].id === currentUserId));
+  const initialIsParticipant = party.participant_ids?.some(id => String(id) === String(currentUserId)) || party.participants?.some(p => p.name === '我 (使用者)' || p.id === currentUserId);
+  const initialIsWaitlisted = party.waitlist_ids?.some(id => String(id) === String(currentUserId)) || party.waitlist?.some(p => p.name === '我 (使用者)' || p.id === currentUserId);
+  const initialHasJoined = isUserHost || initialIsParticipant || initialIsWaitlisted;
 
   const [hasJoined, setHasJoined] = useState(initialHasJoined);
+  const [isWaitlisted, setIsWaitlisted] = useState(initialIsWaitlisted);
   const [joinType, setJoinType] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
   const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
   const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
+
+  // 當打開名單 Modal 時，向後端索取真實資料
+  useEffect(() => {
+    if (showListModal) {
+      const fetchParticipants = async () => {
+        try {
+          const data = await gamesApi.getParticipants(party.id);
+          if (data) {
+            setParty(prev => ({
+              ...prev,
+              participants: data.participants || [],
+              waitlist: data.waitlist || []
+            }));
+          }
+        } catch (err) {
+          console.error("Failed to fetch participants:", err);
+        }
+      };
+      fetchParticipants();
+    }
+  }, [showListModal, party.id]);
   
   // 新增：場地狀態與檢舉功能狀態
   const [isHostView, setIsHostView] = useState(isUserHost); // 根據是否為主揪動態切換
-  const [isTimeApproaching, setIsTimeApproaching] = useState(false); // 測試用：模擬距離活動小於30分
+  const [isTimeApproaching, setIsTimeApproaching] = useState(false);
+  const [userGender, setUserGender] = useState(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const profile = await usersApi.getUserProfile();
+        setUserGender(profile.gender);
+      } catch (err) {
+        console.error('Failed to fetch user profile:', err);
+      }
+    };
+    if (currentUserId && !isUserHost) {
+      fetchUser();
+    }
+  }, [currentUserId, isUserHost]);
+
+  useEffect(() => {
+    if (party?.booking_date && party?.start_time) {
+      const checkTime = () => {
+        const now = new Date();
+        const [year, month, day] = party.booking_date.split('-');
+        const [hours, minutes] = party.start_time.split(':');
+        
+        const startTime = new Date(year, month - 1, day, hours, minutes);
+        const timeDiff = startTime.getTime() - now.getTime();
+        
+        if (timeDiff <= 3600000 && timeDiff > -7200000) {
+          setIsTimeApproaching(true);
+        } else {
+          setIsTimeApproaching(false);
+        }
+      };
+
+      checkTime();
+      const interval = setInterval(checkTime, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [party]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([
     { id: 1, text: '你報名的「歡樂衛生麻將局」場地已確認！', time: '10 分鐘前', read: false },
@@ -84,12 +201,34 @@ function PartyDetail() {
   const [reportedUsers, setReportedUsers] = useState([]); // 新增：紀錄已檢舉的用戶名
   const [showLevelWarningModal, setShowLevelWarningModal] = useState(false); // 等級不符警告
   
-  // 新增：佈告欄狀態
+  // 新增：佈告欄與取消確認狀態
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
-  const [announcements, setAnnouncements] = useState([
-    { id: 1, text: '大家記得帶自己的球具跟水壺喔！', time: '10:00 AM' }
-  ]);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
   const [newAnnouncement, setNewAnnouncement] = useState('');
+
+  // 當打開佈告欄時，向後端索取真實資料
+  useEffect(() => {
+    if (showAnnouncementModal) {
+      const fetchAnnouncements = async () => {
+        try {
+          const data = await gamesApi.getAnnouncements(party.id);
+            const dataArray = Array.isArray(data) ? data : (data.results || []);
+            const formatted = dataArray.map(a => ({
+              id: a.id,
+              text: a.text || a.content || a.title || '',
+              time: a.created_at ? new Date(a.created_at).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : (a.date && a.time ? `${a.date} ${a.time}` : a.time || '')
+            }));
+            setAnnouncements(formatted);
+        } catch (error) {
+          console.error('Fetch announcements error:', error);
+          // 若後端 API 尚未實作或報錯，則保持空陣列
+          setAnnouncements([]);
+        }
+      };
+      fetchAnnouncements();
+    }
+  }, [showAnnouncementModal, party.id]);
 
   const getLevelColor = (lv) => {
     switch(lv) {
@@ -106,64 +245,105 @@ function PartyDetail() {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-  const confirmJoin = () => {
-    const newMember = { 
-      name: '我 (使用者)', 
-      phone: '0987-654-321', 
-      line: 'my_id_888',
-      age: 20,
-      level: 'A'
-    };
-    if (party.currentPlayers < party.maxPlayers) {
-      setParty(prev => ({
-        ...prev,
-        currentPlayers: prev.currentPlayers + 1,
-        participants: [...prev.participants, newMember]
-      }));
-      setJoinType('normal');
-      setHasJoined(true);
-      showToast('報名成功！你已在正取名單中。');
-    } else if (party.currentWaitlist < party.maxWaitlist) {
-      setParty(prev => ({
-        ...prev,
-        currentWaitlist: prev.currentWaitlist + 1,
-        waitlist: [...prev.waitlist, newMember]
-      }));
-      setJoinType('waitlist');
-      setHasJoined(true);
-      showToast('已進入候補名單！有人退出時系統會依序遞補。');
+  const confirmJoin = async (force = false) => {
+    try {
+      const response = await gamesApi.joinGame(party.id, force ? { force: true } : {});
+      
+      const newMember = { 
+        name: '我 (使用者)', 
+        phone: '0987-654-321', 
+        line: 'my_id_888',
+        age: 20,
+        level: 'A'
+      };
+      
+      const isWaitlist = response && response.status === 'waitlist';
+            if (!isWaitlist) {
+          setParty(prev => ({
+            ...prev,
+            currentPlayers: prev.currentPlayers + 1,
+            participants: [...prev.participants, newMember]
+          }));
+          setJoinType('normal');
+          setHasJoined(true);
+          setIsWaitlisted(false);
+          showToast('報名成功，已在參加名單中！');
+        } else {
+          const pos = response.position || (party.currentWaitlist + 1);
+          setParty(prev => ({
+          ...prev,
+          currentWaitlist: prev.currentWaitlist + 1,
+          waitlist: [...prev.waitlist, newMember]
+        }));
+        setJoinType('waitlist');
+        setHasJoined(true);
+        setIsWaitlisted(true);
+        showToast(`已進入候補名單，目前為第 ${pos} 順位！`);
+      }
+    } catch (error) {
+      console.error('Join error:', error);
+      const errorData = error.response?.data;
+      if (errorData && errorData.error_code === 'LEVEL_MISMATCH') {
+        setShowLevelWarningModal(true);
+      } else {
+        const errorMsg = errorData?.detail || '報名失敗，請稍後再試！';
+        alert(errorMsg);
+      }
     }
   };
 
   const handleJoin = () => {
-    const mockUserLevel = 'A'; // 假設使用者等級為 A
-    const partyLevel = party.level || '休閒';
-    
-    // 檢查等級是否匹配 (如果不限或休閒則略過，這裡簡單判斷如果不同就跳警告)
-    if (partyLevel !== '休閒' && partyLevel !== '不限' && partyLevel !== mockUserLevel) {
-      setShowLevelWarningModal(true);
-    } else {
-      confirmJoin();
+    // Frontend proactive gender check
+    if (party.genderLimit && party.genderLimit !== '不限') {
+      const gender = userGender || '未公開';
+      if (gender !== party.genderLimit) {
+        alert(`此揪團${party.genderLimit}，您的性別為「${gender}」，無法加入或候補！`);
+        return;
+      }
+    }
+    confirmJoin(false);
+  };
+
+  const handleCancel = async () => {
+    try {
+      await gamesApi.cancelGame(party.id);
+      if (joinType === 'normal') {
+        setParty(prev => ({
+          ...prev,
+          currentPlayers: prev.currentPlayers - 1,
+          participants: prev.participants.filter(p => p.name !== '我 (使用者)')
+        }));
+      } else if (joinType === 'waitlist') {
+        setParty(prev => ({
+          ...prev,
+          currentWaitlist: prev.currentWaitlist - 1,
+          waitlist: prev.waitlist.filter(p => p.name !== '我 (使用者)')
+        }));
+        }
+        setHasJoined(false);
+        setJoinType(null);
+        showToast(isWaitlisted ? '已取消候補' : '已取消報名');
+        setIsWaitlisted(false);
+      } catch (error) {
+        console.error('Cancel error:', error);
+      alert('取消失敗，請確認伺服器狀態！');
     }
   };
 
-  const handleCancel = () => {
-    if (joinType === 'normal') {
-      setParty(prev => ({
-        ...prev,
-        currentPlayers: prev.currentPlayers - 1,
-        participants: prev.participants.filter(p => p.name !== '我 (使用者)')
-      }));
-    } else if (joinType === 'waitlist') {
-      setParty(prev => ({
-        ...prev,
-        currentWaitlist: prev.currentWaitlist - 1,
-        waitlist: prev.waitlist.filter(p => p.name !== '我 (使用者)')
-      }));
+  const handleDeleteGame = () => {
+    setShowCancelConfirmModal(true);
+  };
+
+  const confirmDeleteGame = async () => {
+    try {
+      await gamesApi.deleteGame(party.id);
+      alert('球局已成功取消並刪除！');
+      setShowCancelConfirmModal(false);
+      navigate('/home');
+    } catch (error) {
+      console.error('Delete game error:', error);
+      alert('刪除球局失敗，請確認伺服器狀態。');
     }
-    setHasJoined(false);
-    setJoinType(null);
-    showToast('已成功取消報名。');
   };
 
   const isFull = party.currentPlayers >= party.maxPlayers;
@@ -174,62 +354,6 @@ function PartyDetail() {
       <nav className="navbar">
         <div className="navbar-logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/home')}>不揪ㄛ</div>
         <div className="navbar-actions" style={{ display: 'flex', gap: '10px', position: 'relative' }}>
-          <button className="btn-outline" onClick={() => setIsTimeApproaching(!isTimeApproaching)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 10px', borderColor: isTimeApproaching ? '#f59e0b' : '#e2e8f0', color: isTimeApproaching ? '#f59e0b' : '#64748b' }}>
-            <Clock size={14} /> {isTimeApproaching ? '活動快開始了' : '距離活動還很久'}
-          </button>
-          <button className="btn-outline" onClick={() => setIsHostView(!isHostView)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 10px' }}>
-            <Eye size={14} /> {isHostView ? '主揪視角' : '一般視角'}
-          </button>
-          
-          <button 
-            className="btn-outline" 
-            style={{ position: 'relative', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onClick={() => setShowNotifications(!showNotifications)}
-          >
-            <Bell size={18} color="#475569" />
-            {notifications.some(n => !n.read) && (
-              <span style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#ef4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>
-            )}
-          </button>
-          
-          {/* 通知中心下拉選單 */}
-          {showNotifications && (
-            <div style={{ position: 'absolute', top: '100%', right: '40px', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                通知中心
-                <span 
-                  style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
-                  onClick={() => setNotifications(notifications.map(n => ({...n, read: true})))}
-                >
-                  全部標示為已讀
-                </span>
-              </div>
-              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                {notifications.length > 0 ? (
-                  notifications.map(n => (
-                    <div 
-                      key={n.id} 
-                      style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff' }}
-                      onClick={() => {
-                        setNotifications(notifications.map(item => item.id === n.id ? {...item, read: true} : item));
-                      }}
-                    >
-                      <div style={{ width: '8px', display: 'flex', justifyContent: 'center', paddingTop: '6px' }}>
-                        {!n.read && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0284c7' }}></div>}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>{n.text}</p>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{n.time}</p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>目前沒有新通知</div>
-                )}
-              </div>
-            </div>
-          )}
-
           <button className="btn-outline" onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700' }}>
             <ArrowLeft size={16} /> 返回大廳
           </button>
@@ -269,14 +393,34 @@ function PartyDetail() {
           </div>
 
           <div style={{ padding: '40px' }}>
-            {isHostView && isTimeApproaching && (
+            {isUserHost && isTimeApproaching && party.venueStatus === 'pending' && (
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '32px' }}>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#1e293b' }}>👑 是否借到場地？</h3>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <button className="btn-primary" style={{ flex: 1, backgroundColor: '#10b981', border: 'none' }} onClick={() => { setParty({...party, venueStatus: 'confirmed'}); showToast('已通知所有成員：場地確認成功！'); }}>
+                  <button className="btn-primary" style={{ flex: 1, backgroundColor: '#10b981', border: 'none' }} onClick={async () => { 
+                    try {
+                      const updatedParty = await gamesApi.updateVenueStatus(party.id, { status: 'confirmed', note: 'CONFIRMED' });
+                      setParty(prev => ({
+                        ...prev,
+                        ...updatedParty,
+                        venueStatus: 'confirmed'
+                      }));
+                      showToast('已通知所有成員：場地確認成功！'); 
+                    } catch(e) { alert('更新失敗'); }
+                  }}>
                     ✅ 確認借到場地
                   </button>
-                  <button className="btn-outline" style={{ flex: 1, color: '#ef4444', borderColor: '#ef4444' }} onClick={() => { setParty({...party, venueStatus: 'failed'}); showToast('已通知所有成員：活動取消！'); }}>
+                  <button className="btn-outline" style={{ flex: 1, color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => { 
+                    try {
+                      const updatedParty = await gamesApi.updateVenueStatus(party.id, { status: 'failed', note: 'FAILED' });
+                      setParty(prev => ({
+                        ...prev,
+                        ...updatedParty,
+                        venueStatus: 'failed'
+                      }));
+                      showToast('已通知所有成員：活動取消！'); 
+                    } catch(e) { alert('更新失敗'); }
+                  }}>
                     ❌ 場地未借到 (取消)
                   </button>
                 </div>
@@ -298,8 +442,13 @@ function PartyDetail() {
 
               <div className="detail-info-item" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', backgroundColor: '#f8fafc', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <MapPin size={20} color="#7995a5" />
-                <span style={{ color: '#64748b', fontWeight: '600' }}>地點：</span>
-                <span style={{ fontWeight: '800' }}>{party.location}</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>地點</span>
+                <span style={{ fontWeight: '800', color: '#1e293b' }}>
+                  {party.location}
+                  {party.venue_note && party.venue_note !== 'CONFIRMED' && party.venue_note !== 'FAILED' && <span style={{ marginLeft: '6px', color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({party.venue_note})</span>}
+                </span>
+              </div>
               </div>
 
               <div className="detail-info-item" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', backgroundColor: '#f8fafc', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -324,7 +473,7 @@ function PartyDetail() {
             <div className="detail-section">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}><Info size={20} /> 備註與說明</h3>
               <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <p className="detail-desc" style={{ margin: 0, lineHeight: '1.6' }}>{party.description || '大家一起開心打球，友誼第一！記得帶自己的水壺與毛巾。'}</p>
+                <p className="detail-desc" style={{ margin: 0, lineHeight: '1.6', color: party.description ? 'inherit' : '#94a3b8' }}>{party.description || '大家一起開心打球！'}</p>
               </div>
             </div>
 
@@ -347,15 +496,15 @@ function PartyDetail() {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'center' }}>
-              {isHostView ? (
-                <button className="btn-action cancel" style={{ width: '100%' }} onClick={() => { alert('球局已取消！'); navigate('/home'); }}>
+              {isUserHost ? (
+                <button className="btn-action cancel" style={{ width: '100%' }} onClick={handleDeleteGame}>
                   取消揪團
                 </button>
-              ) : hasJoined ? (
-                <button className="btn-action cancel" onClick={handleCancel}>
-                  取消報名
-                </button>
-              ) : isFull && isWaitlistFull ? (
+                ) : hasJoined ? (
+                  <button className="btn-action cancel" onClick={handleCancel}>
+                    {isWaitlisted ? '取消候補' : '取消報名'}
+                  </button>
+                ) : isFull && isWaitlistFull ? (
                 <button className="btn-action disabled" disabled>
                   已完全額滿
                 </button>
@@ -470,15 +619,31 @@ function PartyDetail() {
             </div>
             <h3 style={{ marginBottom: '12px', fontSize: '18px' }}>等級不符</h3>
             <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px', lineHeight: '1.5' }}>
-              這個揪團設定的等級是「{party.level}」，但你目前的等級為「A」。<br/><br/>
-              與目前level不符，確定要加入？
+              此房間是{party.level || '未知'}等級，與您等級不符。
             </p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={() => setShowLevelWarningModal(false)}>取消</button>
               <button className="btn-primary" style={{ flex: 1, backgroundColor: '#f59e0b', border: 'none' }} onClick={() => {
                 setShowLevelWarningModal(false);
-                confirmJoin();
+                confirmJoin(true);
               }}>確定加入</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 取消揪團確認 Modal */}
+      {showCancelConfirmModal && (
+        <div className="modal-overlay" onClick={() => setShowCancelConfirmModal(false)} style={{ zIndex: 1200 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+            <h3 style={{ marginBottom: '12px', color: '#1e293b' }}>確定要取消揪團嗎？</h3>
+            <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px', lineHeight: '1.5' }}>
+              此操作將會刪除這個球局，且無法還原。<br/>請確定是否要繼續？
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn-outline" style={{ flex: 1, padding: '16px', fontSize: '18px', fontWeight: '800', borderRadius: '12px' }} onClick={() => setShowCancelConfirmModal(false)}>再想一下</button>
+              <button className="btn-action cancel" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={confirmDeleteGame}>確定取消</button>
             </div>
           </div>
         </div>
@@ -535,13 +700,18 @@ function PartyDetail() {
             
             <div style={{ display: 'flex', gap: '12px' }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={() => setShowReportModal(false)}>取消</button>
-              <button className="login-button" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={() => {
+              <button className="login-button" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={async () => {
                 if (reportingUser) {
-                  setReportedUsers([...reportedUsers, reportingUser]);
+                  try {
+                    await reportsApi.submitReport({ game_id: party.id, reported_user_id: reportingUser, reason: reportReason, detail: reportDetail });
+                    setReportedUsers([...reportedUsers, reportingUser]);
+                    showToast('檢舉已送出，管理團隊將會盡快審查。');
+                  } catch (e) {
+                    alert('檢舉失敗');
+                  }
                 }
                 setShowReportModal(false);
                 setReportingUser(null);
-                showToast('檢舉已送出，管理團隊將會盡快審查。');
                 setReportDetail('');
               }}>送出檢舉</button>
             </div>
@@ -579,7 +749,7 @@ function PartyDetail() {
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', display: 'flex', flexDirection: 'column', height: '80vh', maxHeight: '600px' }}>
             <div className="modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MessageCircle size={20} color="#0284c7" /> 佈告欄
+                <MessageCircle size={20} color="#0284c7" /> 主揪公告
               </h3>
               <button className="modal-close" onClick={() => setShowAnnouncementModal(false)}>&times;</button>
             </div>
@@ -597,7 +767,7 @@ function PartyDetail() {
               )}
             </div>
 
-            {isHostView && (
+            {isUserHost && (
               <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', display: 'flex', gap: '8px' }}>
                 <input 
                   type="text" 
@@ -606,20 +776,26 @@ function PartyDetail() {
                   value={newAnnouncement}
                   onChange={e => setNewAnnouncement(e.target.value)}
                   style={{ flex: 1, margin: 0 }}
-                  onKeyPress={e => {
+                  onKeyPress={async e => {
                     if (e.key === 'Enter' && newAnnouncement.trim()) {
-                      setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]);
-                      setNewAnnouncement('');
+                      try {
+                        await gamesApi.createAnnouncement(party.id, { text: newAnnouncement });
+                        setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }]);
+                        setNewAnnouncement('');
+                      } catch (err) { alert('發佈失敗'); }
                     }
                   }}
                 />
                 <button 
                   className="login-button" 
                   style={{ padding: '0 16px', whiteSpace: 'nowrap', width: 'auto' }}
-                  onClick={() => {
+                  onClick={async () => {
                     if (newAnnouncement.trim()) {
-                      setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]);
-                      setNewAnnouncement('');
+                      try {
+                        await gamesApi.createAnnouncement(party.id, { text: newAnnouncement });
+                        setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }]);
+                        setNewAnnouncement('');
+                      } catch (e) { alert('發佈失敗'); }
                     }
                   }}
                 >
