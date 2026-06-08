@@ -511,6 +511,121 @@ def run_tests():
         "gender_limit": "男女"
     }, token=token_b)
 
+    # 3.8 發起與加入限性別球局防呆測試 (限男、限女限制)
+    print_log("\n👉 [性別限制測試] 註冊女生帳號 C 並完善個人檔案：")
+    status, reg_res_c = make_request("/auth/register/", "POST", data={
+        "email": "user_c@example.com",
+        "password": "Password123!",
+        "name": "陳女生"
+    })
+    token_c = reg_res_c["token"]
+    
+    # 完善 C 檔案，性別設為 "女"
+    status, _ = make_request("/users/profile/", "PUT", data={
+        "name": "陳女生",
+        "phone": "0933444555",
+        "birthday": "2002-08-15",
+        "gender": "女",
+        "levels": {
+            "羽球": "A",
+            "籃球": "B"
+        }
+    }, token=token_c)
+
+    print_log("\n👉 測試：男生 (User B) 嘗試發起限女球局 (應失敗)：")
+    status, res = make_request("/games/", "POST", data={
+        "game_name": "男生發起限女團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "B",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限女"
+    }, token=token_b)
+    if status == 400:
+        print_log("✅ 成功阻擋：男生發起限女球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：男生發起限女球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 嘗試發起限男球局 (應失敗)：")
+    status, res = make_request("/games/", "POST", data={
+        "game_name": "女生發起限男團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "B",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限男"
+    }, token=token_c)
+    if status == 400:
+        print_log("✅ 成功阻擋：女生發起限男球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：女生發起限男球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：男生 (User B) 成功發起限男球局：")
+    status, game_male = make_request("/games/", "POST", data={
+        "game_name": "男生發起限男團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "B",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限男"
+    }, token=token_b)
+    if status == 201:
+        print_log("✅ 成功：男生成功發起限男球局！")
+        male_game_id = game_male["id"]
+    else:
+        print_log(f"❌ 錯誤：男生發起限男球局失敗 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 嘗試加入限男球局 (應失敗)：")
+    status, res = make_request(f"/games/{male_game_id}/join/", "POST", token=token_c)
+    if status == 400:
+        print_log("✅ 成功阻擋：女生加入限男球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：女生加入限男球局回傳狀態為 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：女生 (User C) 成功發起限女球局：")
+    status, game_female = make_request("/games/", "POST", data={
+        "game_name": "女生發起限女團",
+        "sport_id": 2,
+        "court_id": 1,
+        "most_players": 4,
+        "target_level": "B",
+        "booking_date": tomorrow,
+        "start_time": "10:00",
+        "duration": "2 小時",
+        "total_price": 500.0,
+        "gender_limit": "限女"
+    }, token=token_c)
+    if status == 201:
+        print_log("✅ 成功：女生成功發起限女球局！")
+        female_game_id = game_female["id"]
+    else:
+        print_log(f"❌ 錯誤：女生發起限女球局失敗 {status}")
+        sys.exit(1)
+
+    print_log("\n👉 測試：男生 (User B) 嘗試加入限女球局 (應失敗)：")
+    status, res = make_request(f"/games/{female_game_id}/join/", "POST", token=token_b)
+    if status == 400:
+        print_log("✅ 成功阻擋：男生加入限女球局失敗！")
+    else:
+        print_log(f"❌ 錯誤：男生加入限女球局回傳狀態為 {status}")
+        sys.exit(1)
+
     # ========================================================
     # PART 4: 測試 GET /api/games/ 隱私與時間過濾邏輯
     # ========================================================
@@ -732,7 +847,7 @@ def run_tests():
 def cleanup_db():
     print_log("[Cleanup] Cleaning up test data from Database...")
     try:
-        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com"]
+        test_emails = ["admin@example.com", "user_a@example.com", "user_b@example.com", "user_c@example.com"]
         deleted_count, details = User.objects.filter(email__in=test_emails).delete()
         print_log(f"[Cleanup] Deleted test users and cascaded objects: {deleted_count} ({details})")
     except Exception as e:
