@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
-    PenaltyRule, Report, Blacklist, Notification, GameBulletin
+    PenaltyRule, Report, Blacklist, Notification, GameBulletin,
+    Feedback, Announcement
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -428,3 +429,40 @@ class GameBulletinSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameBulletin
         fields = ('id', 'match', 'title', 'content', 'created_at')
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.name', read_only=True)
+
+    class Meta:
+        model = Feedback
+        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'created_at', 'admin_reply')
+        read_only_fields = ('id', 'user', 'created_at')
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Announcement
+        fields = ('id', 'title', 'content', 'created_at', 'photo')
+
+    def get_photo(self, obj):
+        if not obj.photo:
+            return []
+        import json
+        try:
+            return json.loads(obj.photo)
+        except Exception:
+            if ',' in obj.photo:
+                return [p.strip() for p in obj.photo.split(',')]
+            return [obj.photo]
+
+    def to_internal_value(self, data):
+        internal_data = super().to_internal_value(data)
+        photo_data = data.get('photo')
+        if photo_data is not None:
+            import json
+            if isinstance(photo_data, list):
+                internal_data['photo'] = json.dumps(photo_data)
+            else:
+                internal_data['photo'] = json.dumps([photo_data])
+        return internal_data
