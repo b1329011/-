@@ -1396,45 +1396,59 @@ class OpenDataViewSet(viewsets.ViewSet):
             return Response({"detail": "Only admin can sync opendata."}, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
-            badminton, _ = Sport.objects.get_or_create(name="羽毛球")
-            basketball, _ = Sport.objects.get_or_create(name="籃球")
-            volleyball, _ = Sport.objects.get_or_create(name="排球")
-            mahjong, _ = Sport.objects.get_or_create(name="麻將")
+            # Ensure basic sports exist
+            sports_data = ["羽毛球", "籃球", "排球", "麻將", "桌球"]
+            sport_objs = {}
+            for s_name in sports_data:
+                s, _ = Sport.objects.get_or_create(name=s_name)
+                sport_objs[s_name] = s
 
-            addr, _ = Address.objects.get_or_create(
-                city="新北市", district="板橋區", street_line="中正路8號"
-            )
+            # Data from frontend's taiwanRegions
+            venues_to_seed = [
+                {"city": "桃園市", "district": "桃園區", "name": "桃園國民運動中心", "lat": 24.9934, "lng": 121.3124, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "桃園市", "district": "桃園區", "name": "桃園巨蛋室外籃球場", "lat": 24.9961, "lng": 121.3204, "facilities": ["飲水機", "廁所"]},
+                {"city": "桃園市", "district": "中壢區", "name": "中壢國民運動中心", "lat": 24.9602, "lng": 121.2144, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "台北市", "district": "大安區", "name": "台大體育館", "lat": 25.0219, "lng": 121.5353, "facilities": ["冷氣", "飲水機", "廁所"]},
+                {"city": "台北市", "district": "大安區", "name": "大安運動中心", "lat": 25.0224, "lng": 121.5404, "facilities": ["冷氣", "飲水機", "廁所", "淋浴間"]},
+                {"city": "新北市", "district": "板橋區", "name": "板橋體育館", "lat": 25.0116, "lng": 121.4617, "facilities": ["免費車位", "熱水淋浴間", "自動販賣機"]},
+            ]
 
-            venue, _ = Venue.objects.get_or_create(
-                name="板橋體育館",
-                defaults={
-                    "address": addr,
-                    "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
-                    "types": "indoor",
-                    "latitude": 25.0116,
-                    "longitude": 121.4617
-                }
-            )
+            for v_data in venues_to_seed:
+                addr, _ = Address.objects.get_or_create(
+                    city=v_data["city"], 
+                    district=v_data["district"], 
+                    street_line=v_data.get("street_line", "測試路 1 號")
+                )
 
-            venue.facilities.clear()
-            for facility_name in ["免費車位", "熱水淋浴間", "自動販賣機"]:
-                facility, _ = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility)
-            venue.save()
+                venue, _ = Venue.objects.get_or_create(
+                    name=v_data["name"],
+                    defaults={
+                        "address": addr,
+                        "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
+                        "types": "indoor" if "冷氣" in v_data["facilities"] else "outdoor",
+                        "latitude": v_data["lat"],
+                        "longitude": v_data["lng"]
+                    }
+                )
 
-            # Clean and create courts with base_price
-            Court.objects.filter(venue=venue).delete()
-            court1 = Court.objects.create(venue=venue, base_price=300)
-            court1.sports.add(badminton)
-            court2 = Court.objects.create(venue=venue, base_price=300)
-            court2.sports.add(badminton)
+                # Update facilities
+                venue.facilities.clear()
+                for f_name in v_data["facilities"]:
+                    facility, _ = Facility.objects.get_or_create(name=f_name)
+                    venue.facilities.add(facility)
+                venue.save()
 
-            # WeatherData is commented out
-            pass
+                # Create at least 2 courts per venue if none exist
+                if not venue.courts.exists():
+                    c1 = Court.objects.create(venue=venue, base_price=300)
+                    c2 = Court.objects.create(venue=venue, base_price=300)
+                    # Randomly assign sports for demo
+                    c1.sports.add(sport_objs["籃球"], sport_objs["羽毛球"])
+                    c2.sports.add(sport_objs["籃球"], sport_objs["羽毛球"])
 
         return Response({
             "status": "success",
-            "message": "OpenData venues successfully synchronized and cached."
+            "message": f"Successfully synchronized {len(venues_to_seed)} venues from OpenData."
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='weather')
