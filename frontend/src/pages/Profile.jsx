@@ -80,7 +80,7 @@ function Profile() {
               genderLimit: newGame.genderLimit || newGame.gender_limit || '不限',
               location: newGame.location || newGame.venue_name || '未指定地點',
               description: newGame.description || newGame.game_note || '',
-              venue_note: newGame.venue_note || newGame.game_note || '',
+              game_note: newGame.game_note || '',
               currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
               maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
               currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
@@ -475,7 +475,7 @@ function Profile() {
                       </div>
                       <h3 className="party-title">{party.title}</h3>
                       <div className="party-info">
-                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}{party.venue_note ? ` (${party.venue_note})` : ''}</p>
+                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}{party.game_note && party.game_note !== 'CONFIRMED' && party.game_note !== 'FAILED' ? ` (${party.game_note})` : ''}</p>
                         <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
                       </div>
                       <div className="party-card-footer">

@@ -123,7 +123,7 @@ function Home() {
             currentWaitlist: party.currentWaitlist ?? party.current_waitlist ?? 0,
             maxWaitlist: party.maxWaitlist ?? party.max_waitlist ?? 2,
             description: party.game_note || party.description,
-            venue_note: party.venue_note || party.game_note,
+            game_note: party.game_note,
             participants: party.participants || [],
             participant_ids: party.participant_ids || [],
             waitlist_ids: party.waitlist_ids || [],
@@ -647,6 +647,16 @@ function Home() {
                     )}
                     <span className="party-type">{party.type}</span>
                     <span className="party-level">{party.level}</span>
+                    {party.venueStatus === 'confirmed' && (
+                      <span className="party-level" style={{ backgroundColor: '#10b981', color: 'white', fontWeight: 'bold' }}>
+                        ✅ 場地已確認
+                      </span>
+                    )}
+                    {party.venueStatus === 'failed' && (
+                      <span className="party-level" style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold' }}>
+                        ❌ 未借到場地
+                      </span>
+                    )}
                     {party.genderLimit && party.genderLimit !== '不限' && (
                       <span className="party-level">{party.genderLimit}</span>
                     )}
