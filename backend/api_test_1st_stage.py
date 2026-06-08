@@ -186,7 +186,9 @@ def run_tests():
 
     # Seed User A as a participant of past game 999
     try:
-        user_a = User.objects.get(id=user_id_a)
+        from django.contrib.auth import get_user_model as get_auth_user_model
+        UserModel = get_auth_user_model()
+        user_a = UserModel.objects.get(id=user_id_a)
         from api_v1.models import MatchParticipant
         MatchParticipant.objects.get_or_create(match_id=999, user=user_a)
         print_log("👉 已成功將 User A 加入已結束球局 999 作為參與者")
@@ -549,6 +551,145 @@ def run_tests():
             print_log("❌ 錯誤：參與的使用者 A 沒能看到該球局")
     else:
         print_log(f"❌ 錯誤：使用者 A GET /games/ 回傳狀態碼 {status}")
+
+    # ========================================================
+    # PART 5: 測試球局狀態機狀態與通知
+    # ========================================================
+    print_header("PART 5: 測試球局狀態機狀態與通知")
+
+    from django.core.management import call_command
+    from api_v1.models import Notification, MatchParticipant
+    
+    # 取得基礎模型物件
+    from django.contrib.auth import get_user_model as get_auth_user_model
+    UserModel = get_auth_user_model()
+    user_a = UserModel.objects.get(email="user_a@example.com")
+    badminton = Sport.objects.get(id=2)
+    court = Court.objects.get(id=1)
+    
+    # 使用台北當地時間，確保 time_slot 格式化後的字串代表當地時間
+    now = timezone.localtime(timezone.now())
+
+    # 1. 建立 24 小時內即將開始的球局 (預計觸發 24h 通知)
+    start_24h = now + datetime.timedelta(hours=2)
+    end_24h = now + datetime.timedelta(hours=4)
+    time_slot_24h = f"{start_24h.strftime('%H:%M')}-{end_24h.strftime('%H:%M')}"
+    
+    match_24h = GameMatch.objects.create(
+        game_name="24h內熱血球局",
+        creator=user_a,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=start_24h.date(),
+        time_slot=time_slot_24h,
+        total_price=500.0,
+        cancel_deadline=start_24h - datetime.timedelta(hours=24)
+    )
+    MatchParticipant.objects.create(match=match_24h, user=user_a)
+
+    # 2. 建立已開始但尚未結束且人數足夠的球局 (預計觸發 開始通知)
+    start_started = now - datetime.timedelta(hours=1)
+    end_started = now + datetime.timedelta(hours=1)
+    time_slot_started = f"{start_started.strftime('%H:%M')}-{end_started.strftime('%H:%M')}"
+    
+    match_started = GameMatch.objects.create(
+        game_name="已開始成團球局",
+        creator=user_a,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=start_started.date(),
+        time_slot=time_slot_started,
+        total_price=500.0,
+        cancel_deadline=start_started - datetime.timedelta(hours=24)
+    )
+    MatchParticipant.objects.create(match=match_started, user=user_a)
+
+    # 3. 建立已開始但人數不足的球局 (預計觸發 流局)
+    match_failed = GameMatch.objects.create(
+        game_name="人數不足流局球局",
+        creator=user_a,
+        sport=badminton,
+        court=court,
+        least_players=3,
+        most_players=4,
+        target_level="休閒",
+        booking_date=start_started.date(),
+        time_slot=time_slot_started,
+        total_price=500.0,
+        cancel_deadline=start_started - datetime.timedelta(hours=24)
+    )
+    MatchParticipant.objects.create(match=match_failed, user=user_a)
+
+    # 4. 建立已結束的球局 (預計觸發 自動關閉)
+    start_ended = now - datetime.timedelta(hours=3)
+    end_ended = now - datetime.timedelta(hours=1)
+    time_slot_ended = f"{start_ended.strftime('%H:%M')}-{end_ended.strftime('%H:%M')}"
+    
+    match_ended = GameMatch.objects.create(
+        game_name="已結束自動關閉球局",
+        creator=user_a,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=start_ended.date(),
+        time_slot=time_slot_ended,
+        total_price=500.0,
+        cancel_deadline=start_ended - datetime.timedelta(hours=24)
+    )
+    MatchParticipant.objects.create(match=match_ended, user=user_a)
+
+    print_log("\n👉 執行 Django Management Command 更新狀態機...")
+    call_command('update_match_states')
+    
+    # 重新載入球局狀態
+    match_24h.refresh_from_db()
+    match_started.refresh_from_db()
+    match_failed.refresh_from_db()
+    match_ended.refresh_from_db()
+
+    print_log(f"   24h球局狀態 (預期 recruiting/full): {match_24h.match_status}")
+    print_log(f"   已開始成團球局狀態 (預期 started): {match_started.match_status}")
+    print_log(f"   人數不足流局球局狀態 (預期 closed): {match_failed.match_status}")
+    print_log(f"   已結束自動關閉球局狀態 (預期 closed): {match_ended.match_status}")
+
+    # 驗證狀態值
+    if match_failed.match_status == 'closed' and match_ended.match_status == 'closed' and match_started.match_status == 'started':
+        print_log("✅ 成功：球局狀態機狀態移轉正確！")
+    else:
+        print_log("❌ 錯誤：球局狀態機狀態移轉不正確！")
+
+    # 驗證通知發送
+    notif_24h = Notification.objects.filter(user=user_a, match=match_24h, message__contains="將在 24 小時內開始").exists()
+    notif_started = Notification.objects.filter(user=user_a, match=match_started, message__contains="已經開始").exists()
+    notif_failed = Notification.objects.filter(user=user_a, match=match_failed, message__contains="因人數未達下限").exists()
+    notif_ended = Notification.objects.filter(user=user_a, match=match_ended, message__contains="已順利結束").exists()
+
+    print_log(f"   24h球局通知發送情況 (預期 True): {notif_24h}")
+    print_log(f"   已開始成團球局通知發送情況 (預期 True): {notif_started}")
+    print_log(f"   人數不足流局通知發送情況 (預期 True): {notif_failed}")
+    print_log(f"   已結束球局通知發送情況 (預期 True): {notif_ended}")
+
+    if notif_24h and notif_started and notif_failed and notif_ended:
+        print_log("✅ 成功：球局狀態機通知發送全部正確！")
+    else:
+        print_log("❌ 錯誤：球局狀態機通知發送不正確！")
+        
+    # 重複呼叫狀態機，驗證防重複通知邏輯
+    count_before = Notification.objects.filter(user=user_a, match=match_24h).count()
+    call_command('update_match_states')
+    count_after = Notification.objects.filter(user=user_a, match=match_24h).count()
+    if count_before == count_after:
+        print_log("✅ 成功：重複觸發狀態機未產生重複通知！")
+    else:
+        print_log("❌ 錯誤：重複觸發狀態機產生了重複通知！")
 
     print_log("\n" + "=" * 60)
     print_log("🎉 1st Stage API 測試全數執行完畢！")
