@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- 主機： 127.0.0.1
--- 產生時間： 2026-06-08 15:00:23
+-- 產生時間： 2026-06-06 17:35:49
 -- 伺服器版本： 10.4.32-MariaDB
 -- PHP 版本： 8.2.12
 
@@ -32,19 +32,6 @@ CREATE TABLE `address` (
   `city` varchar(50) NOT NULL,
   `district` varchar(50) NOT NULL,
   `street_line` varchar(255) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- 資料表結構 `announcements`
---
-
-CREATE TABLE `announcements` (
-  `announcement_id` int(11) NOT NULL,
-  `title` varchar(200) NOT NULL,
-  `content` text NOT NULL,
-  `created_at` datetime(6) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -111,21 +98,6 @@ CREATE TABLE `facilities` (
 -- --------------------------------------------------------
 
 --
--- 資料表結構 `feedbacks`
---
-
-CREATE TABLE `feedbacks` (
-  `feedback_id` int(11) NOT NULL,
-  `user_id` int(11) DEFAULT NULL,
-  `type` varchar(50) NOT NULL,
-  `content` text NOT NULL,
-  `is_handled` tinyint(1) NOT NULL DEFAULT 0,
-  `created_at` datetime(6) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
 -- 資料表結構 `gamesmatches`
 --
 
@@ -136,20 +108,19 @@ CREATE TABLE `gamesmatches` (
   `sport_id` int(11) NOT NULL,
   `least_players` int(11) NOT NULL,
   `most_players` int(11) NOT NULL,
-  `target_level` enum('休閒','業餘','高手') DEFAULT NULL,
+  `target_level` enum('C(beginner)','B(advanced)','A(Veteran)','S(Elite)') DEFAULT NULL,
   `weather` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`weather`)),
   `air_index` int(11) DEFAULT NULL,
-  `match_status` enum('recruiting','full','closed','started') NOT NULL DEFAULT 'recruiting',
+  `match_status` enum('recruiting','full','closed') NOT NULL DEFAULT 'recruiting',
   `booking_date` date NOT NULL COMMENT '紀錄球局預約的日期',
   `time_slot` varchar(50) NOT NULL COMMENT '紀錄球局進行的時間區間，例如 18:00-20:00',
   `total_price` decimal(10,2) DEFAULT NULL,
   `deposit_required` tinyint(1) NOT NULL DEFAULT 0,
   `cancel_deadline` timestamp NULL DEFAULT NULL,
-  `booking_status` enum('已佔到/已預約','未佔到/未預約','未確認') NOT NULL DEFAULT '未確認',
+  `booking_status` enum('已佔到/已預約','未佔到/未預約','未確認') NOT NULL DEFAULT '未佔到/未預約',
   `gender_limit` enum('不限','限男','限女') NOT NULL DEFAULT '不限',
   `game_note` text DEFAULT NULL COMMENT '佔場位置或衣服說明備註',
-  `game_name` varchar(100) NOT NULL COMMENT '比賽名稱',
-  `venue_note` text DEFAULT NULL
+  `game_name` varchar(100) NOT NULL COMMENT '比賽名稱'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -280,7 +251,7 @@ CREATE TABLE `user_sport_levels` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `sport_id` int(11) NOT NULL,
-  `level` enum('C','B','A','S') NOT NULL,
+  `level` enum('C(beginner)','B(advanced)','A(Veteran)','S(Elite)') NOT NULL,
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -323,12 +294,6 @@ ALTER TABLE `address`
   ADD PRIMARY KEY (`address_id`);
 
 --
--- 資料表索引 `announcements`
---
-ALTER TABLE `announcements`
-  ADD PRIMARY KEY (`announcement_id`);
-
---
 -- 資料表索引 `blacklist`
 --
 ALTER TABLE `blacklist`
@@ -364,13 +329,6 @@ ALTER TABLE `court_sports`
 ALTER TABLE `facilities`
   ADD PRIMARY KEY (`facility_id`),
   ADD UNIQUE KEY `name` (`name`);
-
---
--- 資料表索引 `feedbacks`
---
-ALTER TABLE `feedbacks`
-  ADD PRIMARY KEY (`feedback_id`),
-  ADD KEY `feedbacks_user_id_fk` (`user_id`);
 
 --
 -- 資料表索引 `gamesmatches`
@@ -478,12 +436,6 @@ ALTER TABLE `address`
   MODIFY `address_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- 使用資料表自動遞增(AUTO_INCREMENT) `announcements`
---
-ALTER TABLE `announcements`
-  MODIFY `announcement_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
 -- 使用資料表自動遞增(AUTO_INCREMENT) `blacklist`
 --
 ALTER TABLE `blacklist`
@@ -512,12 +464,6 @@ ALTER TABLE `court_sports`
 --
 ALTER TABLE `facilities`
   MODIFY `facility_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- 使用資料表自動遞增(AUTO_INCREMENT) `feedbacks`
---
-ALTER TABLE `feedbacks`
-  MODIFY `feedback_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- 使用資料表自動遞增(AUTO_INCREMENT) `gamesmatches`
@@ -620,12 +566,6 @@ ALTER TABLE `court_conflicts`
 ALTER TABLE `court_sports`
   ADD CONSTRAINT `court_sports_ibfk_1` FOREIGN KEY (`court_id`) REFERENCES `court` (`court_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `court_sports_ibfk_2` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`sport_id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- 資料表的限制式 `feedbacks`
---
-ALTER TABLE `feedbacks`
-  ADD CONSTRAINT `feedbacks_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- 資料表的限制式 `gamesmatches`

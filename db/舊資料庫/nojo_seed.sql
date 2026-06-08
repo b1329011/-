@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- 主機： 127.0.0.1
--- 產生時間： 2026-06-08 15:01:35
+-- 產生時間： 2026-06-06 16:52:12
 -- 伺服器版本： 10.4.32-MariaDB
 -- PHP 版本： 8.2.12
 
@@ -54,11 +54,11 @@ INSERT INTO `penalty_rules` (`rule_id`, `reason`, `points_deducted`) VALUES
 --
 
 INSERT INTO `sports` (`sport_id`, `sport_name`) VALUES
-(3, '排球'),
-(5, '桌球'),
-(1, '籃球'),
-(2, '羽球'),
-(4, '麻將');
+(2, 'Badminton'),
+(1, 'Basketball'),
+(4, 'Mahjohn'),
+(3, 'Volleyball'),
+(5, '桌球');
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
