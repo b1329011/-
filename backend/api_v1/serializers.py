@@ -152,7 +152,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
         model = GameMatch
         fields = [
             'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
+            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'venue_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
             'match_status', 'participants', 'waitlist', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
