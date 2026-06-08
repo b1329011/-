@@ -475,7 +475,7 @@ function Profile() {
                       </div>
                       <h3 className="party-title">{party.title}</h3>
                       <div className="party-info">
-                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}{party.game_note && party.game_note !== 'CONFIRMED' && party.game_note !== 'FAILED' ? ` (${party.game_note})` : ''}</p>
+                        <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}</p>
                         <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
                       </div>
                       <div className="party-card-footer">

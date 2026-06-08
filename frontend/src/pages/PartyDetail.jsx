@@ -42,14 +42,13 @@ function PartyDetail() {
     // If not explicitly 'confirmed' or 'failed', try to deduce from backend strings
     if (currentVenueStatus !== 'confirmed' && currentVenueStatus !== 'failed') {
       const bs = processedParty.booking_status || processedParty.bookingStatus || '';
-      const gn = processedParty.game_note || processedParty.description || '';
       
-      const confirmedKeywords = ['已確認/已預約', '已預約/已確認', '已確認', 'confirmed', 'CONFIRMED'];
-      const failedKeywords = ['未借到場地', '場地失敗', '未借到', 'failed', 'FAILED'];
+      const confirmedKeywords = ['已確認/已預約', '已預約/已確認', '已確認', 'confirmed'];
+      const failedKeywords = ['未借到場地', '場地失敗', '未借到', 'failed'];
       
-      if (confirmedKeywords.some(kw => bs.includes(kw) || gn.includes(kw))) {
+      if (confirmedKeywords.some(kw => bs.includes(kw))) {
         currentVenueStatus = 'confirmed';
-      } else if (failedKeywords.some(kw => bs.includes(kw) || gn.includes(kw))) {
+      } else if (failedKeywords.some(kw => bs.includes(kw))) {
         currentVenueStatus = 'failed';
       } else {
         currentVenueStatus = 'pending';
@@ -91,9 +90,9 @@ function PartyDetail() {
         const freshData = await gamesApi.getGameById(id);
         if (freshData) {
           let venueStatus = 'pending';
-          if (freshData.booking_status === '已確認/已預約' || freshData.booking_status === '已預約/已確認' || freshData.booking_status === 'confirmed' || freshData.game_note === 'CONFIRMED') {
+          if (freshData.booking_status === '已確認/已預約' || freshData.booking_status === '已預約/已確認' || freshData.booking_status === 'confirmed') {
             venueStatus = 'confirmed';
-          } else if (freshData.booking_status === '未借到場地' || freshData.booking_status === 'failed' || freshData.game_note === 'FAILED') {
+          } else if (freshData.booking_status === '未借到場地' || freshData.booking_status === 'failed') {
             venueStatus = 'failed';
           }
           
@@ -102,7 +101,8 @@ function PartyDetail() {
             ...freshData,
             venueStatus,
             booking_status: freshData.booking_status,
-            game_note: freshData.game_note
+            game_note: freshData.game_note,
+            description: freshData.game_note || freshData.description || prev.description
           }));
         }
       } catch (err) {
@@ -445,7 +445,6 @@ function PartyDetail() {
                 <span style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>地點</span>
                 <span style={{ fontWeight: '800', color: '#1e293b' }}>
                   {party.location}
-                  {party.game_note && party.game_note !== 'CONFIRMED' && party.game_note !== 'FAILED' && <span style={{ marginLeft: '6px', color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({party.game_note})</span>}
                 </span>
               </div>
               </div>
@@ -472,7 +471,7 @@ function PartyDetail() {
             <div className="detail-section">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}><Info size={20} /> 備註與說明</h3>
               <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <p className="detail-desc" style={{ margin: 0, lineHeight: '1.6', color: party.description ? 'inherit' : '#94a3b8' }}>{party.description || '大家一起開心打球！'}</p>
+                <p className="detail-desc" style={{ margin: 0, lineHeight: '1.6', color: (party.game_note || party.description) ? 'inherit' : '#94a3b8' }}>{party.game_note || party.description || '大家一起開心打球！'}</p>
               </div>
             </div>
 
