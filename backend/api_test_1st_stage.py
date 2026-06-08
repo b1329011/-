@@ -184,6 +184,15 @@ def run_tests():
     user_id_a = reg_res_a["user_id"]
     print_log(f"🔑 註冊成功！Token A: {token_a}")
 
+    # Seed User A as a participant of past game 999
+    try:
+        user_a = User.objects.get(id=user_id_a)
+        from api_v1.models import MatchParticipant
+        MatchParticipant.objects.get_or_create(match_id=999, user=user_a)
+        print_log("👉 已成功將 User A 加入已結束球局 999 作為參與者")
+    except Exception as e:
+        print_log(f"❌ 初始化 User A 參與球局 999 失敗: {e}")
+
     # 2. 完善個人檔案
     print_log("\n--- [A.2] 完善個人檔案 A ---")
     setup_profile_a = {
@@ -499,6 +508,47 @@ def run_tests():
         "total_price": 500.0,
         "gender_limit": "男女"
     }, token=token_b)
+
+    # ========================================================
+    # PART 4: 測試 GET /api/games/ 隱私與時間過濾邏輯
+    # ========================================================
+    print_header("PART 4: 測試 GET /api/games/ 隱私與時間過濾邏輯")
+
+    # 1. 未登入狀態下，不應該在列表看到已結束球局 (id=999)
+    print_log("\n--- [GET /games/ 未登入過濾] ---")
+    status, games_anon = make_request("/games/")
+    if status == 200:
+        found_past_game = any(g["id"] == 999 for g in games_anon)
+        if not found_past_game:
+            print_log("✅ 成功：未登入者無法在列表看到已開始/結束的球局")
+        else:
+            print_log("❌ 錯誤：未登入者竟然看到了已開始/結束的球局")
+    else:
+        print_log(f"❌ 錯誤：未登入 GET /games/ 回傳狀態碼 {status}")
+
+    # 2. 登入 B (非參與者) 狀態下，不應該在列表看到已結束球局 (id=999)
+    print_log("\n--- [GET /games/ 登入非參與者過濾] ---")
+    status, games_b = make_request("/games/", token=token_b)
+    if status == 200:
+        found_past_game = any(g["id"] == 999 for g in games_b)
+        if not found_past_game:
+            print_log("✅ 成功：未參與該球局的使用者 B 無法在列表看到已開始/結束的球局")
+        else:
+            print_log("❌ 錯誤：未參與的使用者 B 竟然看到了該球局")
+    else:
+        print_log(f"❌ 錯誤：使用者 B GET /games/ 回傳狀態碼 {status}")
+
+    # 3. 登入 A (參與者) 狀態下，應該在列表看到已結束球局 (id=999)
+    print_log("\n--- [GET /games/ 登入參與者保留] ---")
+    status, games_a = make_request("/games/", token=token_a)
+    if status == 200:
+        found_past_game = any(g["id"] == 999 for g in games_a)
+        if found_past_game:
+            print_log("✅ 成功：參與該球局的使用者 A 在列表看到了已開始/結束的球局")
+        else:
+            print_log("❌ 錯誤：參與的使用者 A 沒能看到該球局")
+    else:
+        print_log(f"❌ 錯誤：使用者 A GET /games/ 回傳狀態碼 {status}")
 
     print_log("\n" + "=" * 60)
     print_log("🎉 1st Stage API 測試全數執行完畢！")
