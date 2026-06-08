@@ -1508,14 +1508,57 @@ class OpenDataViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'], url_path='weather-aqi')
     def weather_aqi(self, request):
+        import urllib.request, urllib.parse, json, ssl
         city = request.query_params.get('city', '桃園市')
-        district = request.query_params.get('district', '桃園區')
+        district = request.query_params.get('district', '龜山區')
+
+        ssl_context = ssl._create_unverified_context()
+
+        # 1. Fetch Weather (CWA District Level)
+        cwa_key = 'CWA-3B417C47-F5EB-406C-A733-DFA20CE8E8C6'
+        encoded_dist = urllib.parse.quote(district.replace("台", "臺"))
+        # F-D0047-005 is Taoyuan City 2-day forecast
+        weather_url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-005?Authorization={cwa_key}&format=JSON&locationName={encoded_dist}"
+        temperature = 26
+        condition = "多雲時晴"
+        try:
+            req = urllib.request.Request(weather_url)
+            with urllib.request.urlopen(req, timeout=5, context=ssl_context) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                locs = data.get('records', {}).get('Locations', [{}])[0].get('Location', [])
+                if locs:
+                    weather_elements = locs[0].get('WeatherElement', [])
+                    for el in weather_elements:
+                        if el['ElementName'] == '溫度':
+                            temperature = int(el['Time'][0]['ElementValue'][0]['Temperature'])
+                        elif el['ElementName'] == '天氣現象':
+                            condition = el['Time'][0]['ElementValue'][0]['Weather']
+        except Exception as e:
+            print(f"Weather API Error: {e}")
+
+        # 2. Fetch AQI (MOENV)
+        moenv_key = '741bb4e0-4089-4ef3-9189-d021e4753b3f'
+        aqi_url = f"https://data.moenv.gov.tw/api/v2/aqx_p_432?language=zh&api_key={moenv_key}"
+        aqi = 45
+        try:
+            req = urllib.request.Request(aqi_url)
+            with urllib.request.urlopen(req, timeout=5, context=ssl_context) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                records = data if isinstance(data, list) else data.get('records', [])
+                for r in records:
+                    if r.get('county') == city or r.get('county') == city.replace("台", "臺"):
+                        val = r.get('aqi')
+                        if val and val.isdigit():
+                            aqi = int(val)
+                            break
+        except Exception as e:
+            print(f"AQI API Error: {e}")
 
         return Response({
-            "location": city,
-            "temperature": 26,
-            "condition": "多雲時晴",
-            "aqi": 45
+            "location": f"{city}{district}",
+            "temperature": temperature,
+            "condition": condition,
+            "aqi": aqi
         }, status=status.HTTP_200_OK)
 
 # 
