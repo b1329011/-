@@ -14,7 +14,7 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist,
-    Notification, GameBulletin
+    Notification, GameBulletin, Feedback, Announcement, Facility
 )
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
@@ -22,7 +22,8 @@ from .serializers import (
     GameMatchListSerializer, MatchParticipantUserSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
-    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
+    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
+    FeedbackSerializer, AnnouncementSerializer
 )
 
 User = get_user_model()
@@ -291,6 +292,19 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer = UserSportLevelSerializer(level_obj)
             return Response(serializer.data)
 
+    @action(detail=True, methods=['patch'], url_path='reputation', permission_classes=[IsAdminRole])
+    def update_reputation(self, request, pk=None):
+        user = self.get_object()
+        score = request.data.get('credit_point')
+        if score is not None:
+            try:
+                user.credit_point = int(score)
+                user.save()
+                return Response({"detail": f"User credit points updated to {user.credit_point}."})
+            except ValueError:
+                return Response({"detail": "Invalid credit point value."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "credit_point is required."}, status=status.HTTP_400_BAD_REQUEST)
+
     # @action(detail=False, methods=['get', 'post'], url_path='availability')
     # def availability(self, request):
     #     availability_obj = UserAvailability.objects.filter(user=request.user).first()
@@ -335,6 +349,38 @@ class VenueViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve', 'regions']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+    def create(self, request, *args, **kwargs):
+        name = request.data.get('name')
+        city = request.data.get('city')
+        district = request.data.get('district')
+        street_line = request.data.get('street_line', '未指定路段')
+        facilities_list = request.data.get('facilities', [])
+        
+        # 1. Create or get Address
+        address, _ = Address.objects.get_or_create(
+            city=city,
+            district=district,
+            street_line=street_line
+        )
+        
+        # 2. Create Venue
+        venue = Venue.objects.create(
+            name=name,
+            address=address,
+            types='indoor'
+        )
+        
+        # 3. Handle Facilities
+        if isinstance(facilities_list, str):
+            facilities_list = [f.strip() for f in facilities_list.split(',') if f.strip()]
+        
+        for f_name in facilities_list:
+            facility, _ = Facility.objects.get_or_create(name=f_name)
+            venue.facilities.add(facility)
+            
+        serializer = self.get_serializer(venue)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='regions')
     def regions(self, request):
@@ -1475,10 +1521,24 @@ class AdminGameViewSet(viewsets.ModelViewSet):
     def change_status(self, request, pk=None):
         match = self.get_object()
         status_val = request.data.get('status')
+        booking_date = request.data.get('booking_date')
+        time_slot = request.data.get('time_slot')
+
+        updated_fields = []
         if status_val:
             match.match_status = status_val
+            updated_fields.append("status")
+        if booking_date:
+            match.booking_date = booking_date
+            updated_fields.append("booking_date")
+        if time_slot:
+            match.time_slot = time_slot
+            updated_fields.append("time_slot")
+
+        if updated_fields:
             match.save()
-        return Response({"detail": f"Status updated to {match.match_status}"})
+            return Response({"detail": f"Game match {', '.join(updated_fields)} updated successfully."})
+        return Response({"detail": "No fields to update."}, status=status.HTTP_400_BAD_REQUEST)
 
 class AdminBroadcastViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
@@ -1670,15 +1730,14 @@ class OpenDataViewSet(viewsets.ViewSet):
             "aqi": aqi
         }, status=status.HTTP_200_OK)
 
-# 
-# class AnnouncementViewSet(viewsets.ModelViewSet):
-#     queryset = Announcement.objects.all().order_by('-created_at')
-#     serializer_class = AnnouncementSerializer
-# 
-#     def get_permissions(self):
-#         if self.action in ['list', 'retrieve']:
-#             return [permissions.AllowAny()]
-#         return [IsAdminRole()]
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all().order_by('-created_at')
+    serializer_class = AnnouncementSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
 
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminRole]
@@ -1713,3 +1772,45 @@ class DemoWeatherView(APIView):
         value = request.data.get('value', 50)
         # WeatherData is commented out
         return Response({"detail": f"Demo weather suitability updated to {value}% (Mocked)"}, status=status.HTTP_200_OK)
+
+class FeedbackViewSet(viewsets.ModelViewSet):
+    queryset = Feedback.objects.all().order_by('-created_at')
+    serializer_class = FeedbackSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'handle', 'destroy']:
+            return [IsAdminRole()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        queryset = Feedback.objects.all().order_by('-created_at')
+        is_handled = self.request.query_params.get('is_handled')
+        if is_handled is not None:
+            val = is_handled.lower() == 'true'
+            queryset = queryset.filter(is_handled=val)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['put'], url_path='handle')
+    def handle(self, request, pk=None):
+        feedback = self.get_object()
+        admin_reply = request.data.get('admin_reply', '')
+        
+        feedback.is_handled = True
+        if admin_reply:
+            feedback.admin_reply = admin_reply
+        feedback.save()
+
+        # Send notification to user
+        if feedback.user:
+            # Format message so frontend can parse it
+            msg_reply = admin_reply or "您的建議已收到，感謝您的支持！"
+            message_content = f"【回饋處理通知】\n[Feedback]\n{feedback.content}\n[Reply]\n{msg_reply}"
+            Notification.objects.create(
+                user=feedback.user,
+                message=message_content
+            )
+
+        return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
