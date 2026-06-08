@@ -1,4 +1,5 @@
 import math
+from datetime import timedelta
 from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -60,6 +61,36 @@ class IsAdminRole(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role == 'admin'
 
+def check_and_update_credit(user):
+    if user.credit_point <= 40:
+        return
+    if user.credit_point >= 100:
+        return
+    now = timezone.now()
+    if not user.last_credit_update:
+        user.last_credit_update = now
+        user.save()
+        return
+
+    elapsed_seconds = (now - user.last_credit_update).total_seconds()
+    seconds_per_point = 2 * 86400  # 1 point per 2 days
+    
+    points_to_recover = int(elapsed_seconds / seconds_per_point)
+    if points_to_recover > 0:
+        user.credit_point = min(100, user.credit_point + points_to_recover)
+        user.last_credit_update = user.last_credit_update + timedelta(seconds=points_to_recover * seconds_per_point)
+        user.save()
+
+class IsNotBanned(permissions.BasePermission):
+    message = "您的信譽分數已低於或等於 40 分，帳號已被永久停權。"
+    
+    def has_permission(self, request, view):
+        if request.user and request.user.is_authenticated:
+            check_and_update_credit(request.user)
+            if request.user.credit_point <= 40:
+                return False
+        return True
+
 class AuthRegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -104,6 +135,13 @@ class AuthLoginView(APIView):
         if not user:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 執行信用分每日恢復檢查
+        check_and_update_credit(user)
+
+        # 檢查是否被永久停權
+        if user.credit_point <= 40:
+            return Response({"detail": "您的信譽分數已低於或等於 40 分，帳號已被永久停權。"}, status=status.HTTP_403_FORBIDDEN)
+
         token, _ = Token.objects.get_or_create(user=user)
         return Response({
             "token": token.key,
@@ -114,6 +152,7 @@ class AuthLoginView(APIView):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated, IsNotBanned]
 
     @action(detail=False, methods=['get', 'put', 'patch', 'delete'], url_path='profile')
     def profile(self, request):
@@ -580,8 +619,16 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+            return [permissions.AllowAny(), IsNotBanned()]
+        return [permissions.IsAuthenticated(), IsNotBanned()]
+
+    def create(self, request, *args, **kwargs):
+        if request.user.credit_point < 60:
+            return Response(
+                {"detail": "您的信譽分數低於 60 分，限制發起（創建）新球局。"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
         # Dynamically trigger state machine updates
@@ -1209,7 +1256,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     #     pass
 
 class FavoriteGameViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsNotBanned]
 
     def list(self, request):
         favs = FavoriteGame.objects.filter(user=request.user)
@@ -1261,33 +1308,122 @@ class FavoriteGameViewSet(viewsets.ViewSet):
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
+    permission_classes = [permissions.IsAuthenticated, IsNotBanned]
 
     def create(self, request, *args, **kwargs):
         game_id = request.data.get('game_id')
         reported_user_id = request.data.get('reported_user_id')
-        
+
         if not game_id or not reported_user_id:
             return Response({"detail": "game_id and reported_user_id are required."}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # 確保 ID 是數字，避免 ValueError: Field 'id' expected a number but got 'xxx'
+        try:
+            game_id_int = int(game_id)
+            reported_user_id_int = int(reported_user_id)
+        except (ValueError, TypeError):
+            return Response({"detail": "game_id 與 reported_user_id 必須為數字。"}, status=status.HTTP_400_BAD_REQUEST)
+
         existing_report = Report.objects.filter(
-            match_id=game_id,
+            match_id=game_id_int,
             reporter=request.user,
-            offender_id=reported_user_id
+            offender_id=reported_user_id_int
         )
         if existing_report.exists():
             return Response(
                 {"detail": "您已經針對此球局檢舉過該名使用者，無法重複檢舉。"},
                 status=status.HTTP_409_CONFLICT
             )
-            
+
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         reason = self.request.data.get('reason')
         detail = self.request.data.get('detail') or ""
+
+        # 使用 validated_data 確保型別正確
+        offender = serializer.validated_data.get('offender')
+        if not offender:
+            offender_id = serializer.validated_data.get('offender_id')
+            offender = get_object_or_404(User, id=offender_id)
+
+        match = serializer.validated_data.get('match')
+        if not match:
+            game_id = self.request.data.get('game_id')
+            if game_id:
+                match = get_object_or_404(GameMatch, id=game_id)
+
+        is_host = False
+        if match and match.creator == offender:
+            is_host = True
+
+        # 1. 執行被檢舉人的信譽分數恢復更新
+        check_and_update_credit(offender)
+
+        # 2. 定義檢舉原因與扣分對照表
+        DEDUCTION_MAP = {
+            '未出現': 30 if is_host else 20,
+            '沒交錢': 15,
+            '球品不好': 10,
+            '不當言語': 10,
+            '言語攻擊': 10,
+            '態度不佳': 10,
+            '等級不符': 10,
+            '等級不符（有菜雞，炸魚的）': 10,
+            '騷擾與人身攻擊': 30,
+            '肢體暴力': 60,
+            '直銷': 15,
+            # 主揪專屬原因
+            '未回報場地': 15,
+            '惡意抬價': 25,
+            '沒預約場地': 30,
+            '回報與實際場地不符': 20,
+        }
+        
+        points_to_deduct = DEDUCTION_MAP.get(reason, 10) # 預設扣 10 分
+
+        # 3. 系統自動扣分
+        offender.credit_point = max(0, offender.credit_point - points_to_deduct)
+        offender.save()
+
+        # 4. 立即發送扣分訊息給被檢舉人
+        Notification.objects.create(
+            user=offender,
+            message=f"【信譽扣分通知】您因為「{reason}」被其他使用者檢舉，信譽分數已扣除 {points_to_deduct} 分。目前分數：{offender.credit_point} 分。"
+        )
+
+        # 4.2 立即發送通知給檢舉人
+        Notification.objects.create(
+            user=self.request.user,
+            message=f"【檢舉處理通知】您對「{offender.name}」的檢舉（原因：{reason}）已成功提交，系統已自動對其扣除 {points_to_deduct} 分。"
+        )
+
+        # 5. 60給警告與限制創房
+        if offender.credit_point < 60:
+            Notification.objects.create(
+                user=offender,
+                message="【信譽警告】您的信譽分數已低於 60 分。系統已限制您發起（創建）新球局的功能，請遵守規範以恢復分數。"
+            )
+
+        # 6. 40永久停權 (ban forever) 並加入黑名單
+        if offender.credit_point <= 40:
+            Blacklist.objects.get_or_create(user=offender)
+            Notification.objects.create(
+                user=offender,
+                message="【永久停權通知】您的信譽分數已低於或等於 40 分，帳號已被系統永久停權。"
+            )
+
+        # 7. 儲存檢舉紀錄，狀態直接設為 'deducted' (自動處罰完成)
         if reason:
             detail = f"[{reason}] {detail}"
-        serializer.save(reporter=self.request.user, detail=detail)
+        serializer.save(
+            reporter=self.request.user,
+            offender=offender,
+            status='deducted',
+            detail=detail,
+            reviewed_at=timezone.now(),
+            admin_note="系統自動審查扣分"
+        )
 
     @action(detail=True, methods=['patch'], url_path='review', permission_classes=[IsAdminRole])
     def review(self, request, pk=None):
