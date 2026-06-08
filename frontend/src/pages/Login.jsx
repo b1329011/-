@@ -39,7 +39,8 @@ function Login() {
       navigate('/home');
     } catch (error) {
       console.error('Login error:', error);
-      alert('登入失敗，請檢查帳號密碼或確認伺服器狀態！');
+      const errorMsg = error.response?.data?.detail || '登入失敗，請檢查帳號密碼或確認伺服器狀態！';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }

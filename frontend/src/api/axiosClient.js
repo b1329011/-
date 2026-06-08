@@ -39,6 +39,18 @@ axiosClient.interceptors.response.use(
 		if (error.response && error.response.status === 401) {
 			localStorage.removeItem("token");
 		}
+		// 處理被停權的情況 (403 Forbidden)
+		if (
+			error.response &&
+			error.response.status === 403 &&
+			error.response.data?.detail?.includes("永久停權")
+		) {
+			alert(error.response.data.detail);
+			localStorage.clear();
+			if (window.location.pathname !== "/login") {
+				window.location.href = "/login";
+			}
+		}
 		// 可以集中處理各種錯誤代碼
 		console.error("API Error:", error.response || error.message);
 		return Promise.reject(error);
