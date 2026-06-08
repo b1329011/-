@@ -570,15 +570,24 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(target_level__icontains=level)
 
         # Filter by start time / participation if action is list
+        # Only return:
+        # - Matches that have not started yet (now < start_time)
+        # - Matches that have started but not ended yet (start_time <= now < end_time) AND user is a participant
+        # - Exclude ended matches (now >= end_time) completely.
         if getattr(self, 'action', None) == 'list':
             now = timezone.now()
             user = self.request.user
             valid_ids = []
             
             for match in queryset:
-                match_time = get_match_start_datetime(match)
-                has_started = now >= match_time
+                start_time = get_match_start_datetime(match)
+                end_time = get_match_end_datetime(match)
                 
+                # Exclude ended matches completely
+                if now >= end_time:
+                    continue
+                
+                has_started = now >= start_time
                 is_participant = False
                 if user and user.is_authenticated:
                     is_participant = (

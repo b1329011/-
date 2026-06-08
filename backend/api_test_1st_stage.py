@@ -516,39 +516,73 @@ def run_tests():
     # ========================================================
     print_header("PART 4: 測試 GET /api/games/ 隱私與時間過濾邏輯")
 
-    # 1. 未登入狀態下，不應該在列表看到已結束球局 (id=999)
+    from django.contrib.auth import get_user_model as get_auth_user_model
+    UserModel = get_auth_user_model()
+    user_a = UserModel.objects.get(email="user_a@example.com")
+    badminton = Sport.objects.get(id=2)
+    court = Court.objects.get(id=1)
+    
+    # 建立一個正在進行中 (已開始但未結束) 且 A 參與的球局 (id=998)
+    test_now = timezone.localtime(timezone.now())
+    start_started = test_now - datetime.timedelta(hours=1)
+    end_started = test_now + datetime.timedelta(hours=1)
+    time_slot_started = f"{start_started.strftime('%H:%M')}-{end_started.strftime('%H:%M')}"
+    
+    from api_v1.models import GameMatch, MatchParticipant
+    match_active_started, _ = GameMatch.objects.get_or_create(
+        id=998,
+        defaults={
+            "game_name": "正在進行中且參賽球局",
+            "creator": user_a,
+            "sport": badminton,
+            "court": court,
+            "least_players": 1,
+            "most_players": 4,
+            "target_level": "休閒",
+            "booking_date": start_started.date(),
+            "time_slot": time_slot_started,
+            "total_price": 500.0,
+            "cancel_deadline": start_started - datetime.timedelta(hours=24)
+        }
+    )
+    MatchParticipant.objects.get_or_create(match=match_active_started, user=user_a)
+
+    # 1. 未登入狀態下，不應該在列表看到已結束球局 (id=999) 且不應該看到進行中但未參與的球局 (id=998)
     print_log("\n--- [GET /games/ 未登入過濾] ---")
     status, games_anon = make_request("/games/")
     if status == 200:
         found_past_game = any(g["id"] == 999 for g in games_anon)
-        if not found_past_game:
-            print_log("✅ 成功：未登入者無法在列表看到已開始/結束的球局")
+        found_active_started = any(g["id"] == 998 for g in games_anon)
+        if not found_past_game and not found_active_started:
+            print_log("✅ 成功：未登入者無法在列表看到已結束球局，也看不到進行中但未參賽的球局")
         else:
-            print_log("❌ 錯誤：未登入者竟然看到了已開始/結束的球局")
+            print_log(f"❌ 錯誤：未登入者看到了不該看的球局！已結束球局在列表: {found_past_game}, 進行中球局在列表: {found_active_started}")
     else:
         print_log(f"❌ 錯誤：未登入 GET /games/ 回傳狀態碼 {status}")
 
-    # 2. 登入 B (非參與者) 狀態下，不應該在列表看到已結束球局 (id=999)
+    # 2. 登入 B (非參與者) 狀態下，不應該在列表看到已結束球局 (id=999) 且不應該看到進行中但未參與的球局 (id=998)
     print_log("\n--- [GET /games/ 登入非參與者過濾] ---")
     status, games_b = make_request("/games/", token=token_b)
     if status == 200:
         found_past_game = any(g["id"] == 999 for g in games_b)
-        if not found_past_game:
-            print_log("✅ 成功：未參與該球局的使用者 B 無法在列表看到已開始/結束的球局")
+        found_active_started = any(g["id"] == 998 for g in games_b)
+        if not found_past_game and not found_active_started:
+            print_log("✅ 成功：未參與該球局的使用者 B 無法在列表看到已結束球局，也看不到進行中但未參賽的球局")
         else:
-            print_log("❌ 錯誤：未參與的使用者 B 竟然看到了該球局")
+            print_log(f"❌ 錯誤：使用者 B 看到了不該看的球局！已結束球局在列表: {found_past_game}, 進行中球局在列表: {found_active_started}")
     else:
         print_log(f"❌ 錯誤：使用者 B GET /games/ 回傳狀態碼 {status}")
 
-    # 3. 登入 A (參與者) 狀態下，應該在列表看到已結束球局 (id=999)
-    print_log("\n--- [GET /games/ 登入參與者保留] ---")
+    # 3. 登入 A (參與者) 狀態下，不應該看到已結束球局 (id=999)，但應該要看到進行中且已參賽的球局 (id=998)
+    print_log("\n--- [GET /games/ 登入參與者過濾與保留] ---")
     status, games_a = make_request("/games/", token=token_a)
     if status == 200:
         found_past_game = any(g["id"] == 999 for g in games_a)
-        if found_past_game:
-            print_log("✅ 成功：參與該球局的使用者 A 在列表看到了已開始/結束的球局")
+        found_active_started = any(g["id"] == 998 for g in games_a)
+        if not found_past_game and found_active_started:
+            print_log("✅ 成功：參賽使用者 A 成功過濾掉已結束球局，且能在列表看到進行中且已參賽的球局")
         else:
-            print_log("❌ 錯誤：參與的使用者 A 沒能看到該球局")
+            print_log(f"❌ 錯誤：使用者 A 列表過濾不正確！已結束球局在列表: {found_past_game} (預期 False), 進行中已參賽球局在列表: {found_active_started} (預期 True)")
     else:
         print_log(f"❌ 錯誤：使用者 A GET /games/ 回傳狀態碼 {status}")
 
