@@ -111,6 +111,17 @@ def check_and_create_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
 
+        # Check if last_credit_update column exists in users table in MySQL
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = 'users' 
+              AND COLUMN_NAME = 'last_credit_update'
+        """)
+        if cursor.fetchone()[0] == 0:
+            print_log("[Init] Adding missing last_credit_update column to users table in MySQL...")
+            cursor.execute("ALTER TABLE `users` ADD COLUMN `last_credit_update` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)")
+
 def initialize_db():
     check_and_create_tables()
     print_log("[Init] Cleaning test users for bulletins test run...")
