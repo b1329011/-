@@ -231,8 +231,8 @@ class GameMatch(models.Model):
         ('高手', '高手'),
     )
     BOOKING_STATUS_CHOICES = (
-        ('已佔到/已預約', '已佔到/已預約'),
-        ('未佔到/未預約', '未佔到/未預約'),
+        ('已確認/已預約', '已確認/已預約'),
+        ('未借到場地', '未借到場地'),
         ('未確認', '未確認'),
     )
     id = models.AutoField(primary_key=True, db_column='game_id')
@@ -251,7 +251,7 @@ class GameMatch(models.Model):
     match_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruiting')
     weather = models.JSONField(db_column='weather', null=True, blank=True)
     air_index = models.IntegerField(null=True, blank=True)
-    booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未佔到/未預約')
+    booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未確認')
     game_note = models.TextField(null=True, blank=True, db_column='game_note')
     venue_note = models.TextField(null=True, blank=True, db_column='venue_note')
     gender_limit = models.CharField(max_length=20, default='不限')

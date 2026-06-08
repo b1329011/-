@@ -96,6 +96,39 @@ class MatchParticipantUserSerializer(serializers.ModelSerializer):
             
         return 'C' # 預設回傳 C
 
+class GameMatchListSerializer(serializers.ModelSerializer):
+    sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
+    sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
+    venue_name = serializers.CharField(source='court.venue.name', read_only=True)
+    split_price = serializers.ReadOnlyField()
+    current_players = serializers.SerializerMethodField()
+    creator_id = serializers.ReadOnlyField(source='creator.id')
+    participant_ids = serializers.SerializerMethodField()
+    waitlist_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GameMatch
+        fields = [
+            'id', 'game_name', 'sport_id', 'sport_name', 'venue_name', 'least_players', 'most_players',
+            'current_players', 'target_level', 'booking_date', 'time_slot', 
+            'split_price', 'booking_status', 'match_status', 'creator_id',
+            'gender_limit', 'participant_ids', 'waitlist_ids'
+        ]
+
+    def get_current_players(self, obj):
+        cnt = obj.participants.count()
+        return min(cnt, obj.most_players)
+
+    def get_participant_ids(self, obj):
+        all_parts = obj.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:obj.most_players]
+        return [p.user.id for p in regular_parts]
+
+    def get_waitlist_ids(self, obj):
+        all_parts = obj.participants.all().order_by('joined_at')
+        waitlisted_parts = all_parts[obj.most_players:]
+        return [p.user.id for p in waitlisted_parts]
+
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
     court_id = serializers.PrimaryKeyRelatedField(queryset=Court.objects.all(), source='court', required=False, allow_null=True)
@@ -107,6 +140,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
     max_waitlist = serializers.SerializerMethodField()
     participants = serializers.SerializerMethodField()
     waitlist = serializers.SerializerMethodField()
+    participant_ids = serializers.SerializerMethodField()
+    waitlist_ids = serializers.SerializerMethodField()
     creator_id = serializers.ReadOnlyField(source='creator.id')
     distance_km = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, required=False)
     facilities = serializers.SerializerMethodField()
@@ -155,7 +190,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'venue_note',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
-            'match_status', 'participants', 'waitlist', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
+            'match_status', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
@@ -182,15 +217,22 @@ class GameMatchSerializer(serializers.ModelSerializer):
         max_allowed = math.ceil(obj.most_players * 1.3)
         return max_allowed - obj.most_players
 
-    def get_participants(self, obj):
+    def get_participant_ids(self, obj):
         all_parts = obj.participants.all().order_by('joined_at')
         regular_parts = all_parts[:obj.most_players]
-        return MatchParticipantUserSerializer(regular_parts, many=True).data
+        return [p.user.id for p in regular_parts]
 
-    def get_waitlist(self, obj):
+    def get_waitlist_ids(self, obj):
         all_parts = obj.participants.all().order_by('joined_at')
         waitlisted_parts = all_parts[obj.most_players:]
-        return MatchParticipantUserSerializer(waitlisted_parts, many=True).data
+        return [p.user.id for p in waitlisted_parts]
+
+    def get_participants(self, obj):
+        # Fallback for old code if needed, but we'll try to avoid using it
+        return []
+
+    def get_waitlist(self, obj):
+        return []
 
     def validate_total_price(self, value):
         if value is not None and (value < 0 or value > 10000):

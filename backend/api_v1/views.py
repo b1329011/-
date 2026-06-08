@@ -18,6 +18,7 @@ from .models import (
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
+    GameMatchListSerializer, MatchParticipantUserSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
     BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
@@ -568,6 +569,23 @@ def update_all_match_statuses():
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return GameMatchListSerializer
+        return GameMatchSerializer
+
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        match = self.get_object()
+        all_parts = match.participants.all().order_by('joined_at')
+        regular_parts = all_parts[:match.most_players]
+        waitlisted_parts = all_parts[match.most_players:]
+        
+        return Response({
+            'participants': MatchParticipantUserSerializer(regular_parts, many=True).data,
+            'waitlist': MatchParticipantUserSerializer(waitlisted_parts, many=True).data
+        })
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
@@ -1149,29 +1167,42 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='venue-status')
     def venue_status(self, request, pk=None):
         match = self.get_object()
+        
+        # 權限檢查：只有主揪才能回報場地狀態
+        if match.creator != request.user and request.user.role != 'admin':
+            return Response({"detail": "只有主揪才能回報場地狀態。"}, status=status.HTTP_403_FORBIDDEN)
+
         status_val = request.data.get('status')
         note_val = request.data.get('note', '')
 
         if not status_val:
             return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Support both English and Chinese input, mapping to the DB ENUM choice
+        # 支援英文與中文輸入，對映至資料庫的 Enum 選項
         status_map = {
-            'confirmed': '已佔到/已預約',
-            'failed': '未佔到/未預約',
+            'confirmed': '已確認/已預約',
+            'failed': '未借到場地',
             'pending': '未確認'
         }
         db_status = status_map.get(status_val, status_val)
 
-        # Filter out placeholder note values like 'CONFIRMED' or 'FAILED'
+        # 過濾掉佔位用的備註值（如 'CONFIRMED' 或 'FAILED'）
         clean_note = note_val
         if clean_note and clean_note.strip().upper() in ['CONFIRMED', 'FAILED']:
             clean_note = ''
 
         match.booking_status = db_status
         match.venue_note = clean_note
+        
+        # 更新 game_note 作為前端判斷狀態的備援訊號 (需精確匹配 'CONFIRMED' 或 'FAILED')
+        if status_val == 'confirmed':
+            match.game_note = 'CONFIRMED'
+        elif status_val == 'failed':
+            match.game_note = 'FAILED'
+            
         match.save()
 
+        # 發送通知給所有參與者
         participants = match.participants.all()
         for p in participants:
             Notification.objects.create(
@@ -1180,12 +1211,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 message=f"【場地狀態回報通知】您報名的球局「{match.sport.chinese_name}」場地狀態已更新！\n狀態：{match.booking_status}\n說明：{match.venue_note or '無'}"
             )
 
-        return Response({
-            "status": "success",
-            "venue_status": match.booking_status,
-            "venue_note": match.venue_note,
-            "message": "場地狀態更新成功，已同步發送通知給所有參賽球友。"
-        }, status=status.HTTP_200_OK)
+        # 回傳完整的球局資料，方便前端同步
+        serializer = self.get_serializer(match)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'], url_path='confirm-presence')
     def confirm_presence(self, request, pk=None):
