@@ -24,6 +24,7 @@ django.setup()
 from django.contrib.auth import get_user_model
 User = get_user_model()
 from api_v1.models import Sport, Venue, Court, GameMatch, Report
+from django.utils import timezone
 
 BASE_URL = "http://127.0.0.1:8088/api"
 
@@ -136,6 +137,26 @@ def initialize_db():
     badminton, _ = Sport.objects.get_or_create(id=2, defaults={"name": "羽毛球"})
     court, _ = Court.objects.get_or_create(id=1, defaults={"venue": venue, "base_price": 300})
     court.sports.add(badminton)
+
+    # Create a past match for testing joining started games
+    import datetime
+    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    GameMatch = django.apps.apps.get_model('api_v1', 'GameMatch')
+    GameMatch.objects.create(
+        id=999,
+        game_name="已結束球局",
+        creator=User.objects.get(email="admin@example.com"),
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=yesterday,
+        time_slot="10:00-12:00",
+        total_price=500.0,
+        cancel_deadline=timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time(10, 0)))
+    )
+
     print_log("[Init] Database seeded successfully.")
 
 def run_tests():
@@ -360,6 +381,14 @@ def run_tests():
         "gender": "男",
         "levels": {"羽球": "B"}
     }, token=token_b)
+
+    # 2.6 測試加入已開始的球局
+    print_log("\n👉 測試：加入已開始的球局：")
+    status, res = make_request("/games/999/join/", "POST", token=token_b)
+    if status == 400:
+        print_log("✅ 成功阻擋加入已開始的球局！")
+    else:
+        print_log(f"❌ 錯誤：加入已開始的球局竟回傳了 status: {status}")
 
     # 3. 資料亂填的發起球局
     print_log("\n--- [B.3] B 發起亂填資料的球局防呆 ---")

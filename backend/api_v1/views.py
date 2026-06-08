@@ -659,6 +659,22 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         match = self.get_object()
         user = request.user
         
+        # 0. Check if the match has already started
+        now = timezone.now()
+        start_time = timezone.datetime.min.time()
+        if match.time_slot and '-' in match.time_slot:
+            start_str = match.time_slot.split('-')[0].strip()
+            for fmt in ("%H:%M", "%H:%M:%S"):
+                try:
+                    start_time = timezone.datetime.strptime(start_str, fmt).time()
+                    break
+                except ValueError:
+                    pass
+        
+        match_time = timezone.make_aware(timezone.datetime.combine(match.booking_date, start_time))
+        if now >= match_time:
+            return Response({"detail": "此球局已經開始，無法加入。"}, status=status.HTTP_400_BAD_REQUEST)
+        
         # 讀取強制加入參數，支援布林值與字串
         force_param = request.data.get('force', False) if isinstance(request.data, dict) else False
         force = force_param in [True, 'true', 'True', 1, '1']
