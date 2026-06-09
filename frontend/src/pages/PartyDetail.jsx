@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
 	MapPin,
@@ -203,20 +203,31 @@ function PartyDetail() {
 
 	const [hasJoined, setHasJoined] = useState(initialHasJoined);
 	const [isWaitlisted, setIsWaitlisted] = useState(initialIsWaitlisted);
-	const [joinType, setJoinType] = useState(null);
+	const [joinType, setJoinType] = useState(
+		isUserHost ? "host" : initialIsWaitlisted ? "waitlist" : initialIsParticipant ? "normal" : null
+	);
 	const [toastMsg, setToastMsg] = useState("");
 	const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
 	const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
 
-	// 判斷是否為歷史球局 (已結束或已關閉)
+	// 判斷是否為歷史球局：狀態已關閉，或結束時間 < 現在
 	const isHistory = useMemo(() => {
 		const status = party.match_status || party.status || party.game_status;
-		return (
-			status === "closed" ||
-			status === "failed_to_start" ||
-			status === "已結束" ||
-			status === "已關閉"
-		);
+		if (status === "closed" || status === "failed_to_start") return true;
+
+		const { booking_date, time_slot } = party;
+		if (booking_date && time_slot && time_slot.includes('-')) {
+			const parts = time_slot.split('-');
+			const startStr = parts[0]?.trim();
+			const endStr = parts[1]?.trim();
+			if (startStr && endStr) {
+				const startDt = new Date(`${booking_date}T${startStr}:00`);
+				let endDt = new Date(`${booking_date}T${endStr}:00`);
+				if (endDt <= startDt) endDt = new Date(endDt.getTime() + 86400000);
+				return endDt <= new Date();
+			}
+		}
+		return false;
 	}, [party]);
 
 	// 當打開名單 Modal 時，向後端索取真實資料
@@ -341,6 +352,42 @@ function PartyDetail() {
 		}
 	}, [showAnnouncementModal, party.id]);
 
+	// 即時輪詢：每 15 秒更新人數與狀態（Feature 6）
+	useEffect(() => {
+		if (!id || isHistory) return;
+		const pollInterval = setInterval(async () => {
+			try {
+				const fresh = await gamesApi.getGameById(id);
+				if (!fresh) return;
+				setParty((prev) => ({
+					...prev,
+					currentPlayers: fresh.current_players ?? prev.currentPlayers,
+					currentWaitlist: fresh.current_waitlist ?? prev.currentWaitlist,
+					participant_ids: fresh.participant_ids ?? prev.participant_ids,
+					waitlist_ids: fresh.waitlist_ids ?? prev.waitlist_ids,
+					match_status: fresh.match_status ?? prev.match_status,
+				}));
+				// 同步自己的參與狀態
+				const myId = String(currentUserId);
+				const partIds = (fresh.participant_ids || []).map(String);
+				const waitIds = (fresh.waitlist_ids || []).map(String);
+				if (partIds.includes(myId) || waitIds.includes(myId)) {
+					if (!hasJoined) setHasJoined(true);
+					if (waitIds.includes(myId)) {
+						setIsWaitlisted(true);
+						setJoinType('waitlist');
+					} else {
+						setIsWaitlisted(false);
+						setJoinType('normal');
+					}
+				}
+			} catch (err) {
+				// 靜默失敗，避免干擾用戶
+			}
+		}, 15000);
+		return () => clearInterval(pollInterval);
+	}, [id, isHistory, currentUserId, hasJoined]);
+
 	const getLevelColor = (lv) => {
 		switch (lv) {
 			case "S":
@@ -361,6 +408,27 @@ function PartyDetail() {
 		setTimeout(() => setToastMsg(""), 3000);
 	};
 
+	// 加入後從後端重新拉取最新人數資料
+	const refreshPartyData = async () => {
+		try {
+			const fresh = await gamesApi.getGameById(party.id);
+			if (fresh) {
+				setParty((prev) => ({
+					...prev,
+					currentPlayers: fresh.current_players ?? prev.currentPlayers,
+					currentWaitlist: fresh.current_waitlist ?? prev.currentWaitlist,
+					participants: fresh.participants ?? prev.participants,
+					waitlist: fresh.waitlist ?? prev.waitlist,
+					participant_ids: fresh.participant_ids ?? prev.participant_ids,
+					waitlist_ids: fresh.waitlist_ids ?? prev.waitlist_ids,
+					match_status: fresh.match_status ?? prev.match_status,
+				}));
+			}
+		} catch (err) {
+			console.error('Refresh party data error:', err);
+		}
+	};
+
 	const confirmJoin = async (force = false) => {
 		try {
 			const response = await gamesApi.joinGame(
@@ -368,42 +436,46 @@ function PartyDetail() {
 				force ? { force: true } : {},
 			);
 
-			const newMember = {
-				id: currentUserId,
-				name: "我 (使用者)",
-				phone: "0987-654-321",
-				line: "my_id_888",
-				age: 20,
-				level: "A",
-			};
-
 			const isWaitlist = response && response.status === "waitlist";
 			if (!isWaitlist) {
+				// 用後端回傳的最新人數更新，或 +1
 				setParty((prev) => ({
 					...prev,
-					currentPlayers: prev.currentPlayers + 1,
-					participants: [...prev.participants, newMember],
+					currentPlayers: response.current_players ?? (prev.currentPlayers + 1),
+					participant_ids: [...(prev.participant_ids || []), currentUserId],
 				}));
 				setJoinType("normal");
 				setHasJoined(true);
 				setIsWaitlisted(false);
 				showToast("報名成功，已在參加名單中！");
 			} else {
-				const pos = response.position || party.currentWaitlist + 1;
+				const pos = response.position || (party.currentWaitlist ?? 0) + 1;
 				setParty((prev) => ({
 					...prev,
-					currentWaitlist: prev.currentWaitlist + 1,
-					waitlist: [...prev.waitlist, newMember],
+					currentWaitlist: response.current_waitlist ?? (prev.currentWaitlist + 1),
+					waitlist_ids: [...(prev.waitlist_ids || []), currentUserId],
 				}));
 				setJoinType("waitlist");
 				setHasJoined(true);
 				setIsWaitlisted(true);
 				showToast(`已進入候補名單，目前為第 ${pos} 順位！`);
 			}
+			// 重新整理完整資料
+			await refreshPartyData();
 		} catch (error) {
 			console.error("Join error:", error);
 			const errorData = error.response?.data;
-			if (errorData && errorData.error_code === "LEVEL_MISMATCH") {
+			if (errorData?.already === "joined") {
+				setHasJoined(true);
+				setIsWaitlisted(false);
+				setJoinType("normal");
+				showToast("您已報名此球局！");
+			} else if (errorData?.already === "waitlist") {
+				setHasJoined(true);
+				setIsWaitlisted(true);
+				setJoinType("waitlist");
+				showToast("您已在候補名單中！");
+			} else if (errorData?.error_code === "LEVEL_MISMATCH") {
 				setShowLevelWarningModal(true);
 			} else {
 				const errorMsg = errorData?.detail || "報名失敗，請稍後再試！";
@@ -432,25 +504,12 @@ function PartyDetail() {
 	const handleCancel = async () => {
 		try {
 			await gamesApi.cancelGame(party.id);
-			if (joinType === "normal") {
-				setParty((prev) => ({
-					...prev,
-					currentPlayers: prev.currentPlayers - 1,
-					participants: prev.participants.filter(
-						(p) => p.name !== "我 (使用者)",
-					),
-				}));
-			} else if (joinType === "waitlist") {
-				setParty((prev) => ({
-					...prev,
-					currentWaitlist: prev.currentWaitlist - 1,
-					waitlist: prev.waitlist.filter((p) => p.name !== "我 (使用者)"),
-				}));
-			}
 			setHasJoined(false);
 			setJoinType(null);
-			showToast(isWaitlisted ? "已取消候補" : "已取消報名");
+			const wasWaitlisted = isWaitlisted;
 			setIsWaitlisted(false);
+			showToast(wasWaitlisted ? "已取消候補" : "已取消報名");
+			await refreshPartyData();
 		} catch (error) {
 			console.error("Cancel error:", error);
 			alert("取消失敗，請確認伺服器狀態！");
@@ -966,9 +1025,14 @@ function PartyDetail() {
 											取消揪團
 										</button>
 									) : hasJoined ? (
-										<button className="btn-action cancel" onClick={handleCancel}>
-											{isWaitlisted ? "取消候補" : "取消報名"}
-										</button>
+										<div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'center' }}>
+											<span style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: isWaitlisted ? '#fef3c7' : '#dcfce7', color: isWaitlisted ? '#b45309' : '#16a34a', fontWeight: '700', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+												{isWaitlisted ? '⏳ 已候補' : '✅ 已報名'}
+											</span>
+											<button className="btn-action cancel" onClick={handleCancel} style={{ minWidth: '100px' }}>
+												{isWaitlisted ? "取消候補" : "取消報名"}
+											</button>
+										</div>
 									) : isFull && isWaitlistFull ? (
 										<button className="btn-action disabled" disabled>
 											已完全額滿

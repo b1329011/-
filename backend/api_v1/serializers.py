@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
-    MatchParticipant, FavoriteGame, 
+    User, Sport, UserSportLevel, Address, Venue, Court, GameMatch,
+    MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
-    Feedback, Announcement
+    Feedback, FeedbackType, Announcement
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -575,6 +575,11 @@ class GameBulletinSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameBulletin
         fields = ('id', 'match', 'title', 'content', 'created_at')
+
+class FeedbackTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackType
+        fields = ('id', 'name')
 
 class FeedbackSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.name', read_only=True)

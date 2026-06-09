@@ -492,8 +492,10 @@ function Profile() {
                     badgeStatusColor = '#ef4444'; // Red
                   }
 
+                  const isHistoryTab = activeTab === 'history';
+                  const navState = { party, isHistory: isHistoryTab };
                   return (
-                    <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
+                    <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: navState })}>
                       <div className="party-card-header">
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {isHost && (
@@ -509,8 +511,11 @@ function Profile() {
                               {badgeStatusText}
                             </span>
                           )}
+                          {isHistoryTab && (
+                            <span className="party-level" style={{ backgroundColor: '#64748b', color: 'white' }}>已結束</span>
+                          )}
                         </div>
-                        {activeTab === 'ongoing' && (
+                        {!isHistoryTab && (
                           <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
                         )}
                       </div>
@@ -521,13 +526,13 @@ function Profile() {
                       </div>
                       <div className="party-card-footer">
                         <span className="player-count">
-                          {activeTab === 'ongoing' ? `目前人數: ${party.currentPlayers} / ${party.maxPlayers}` : `最終人數: ${party.currentPlayers}`}
+                          {isHistoryTab ? `最終人數: ${party.currentPlayers}` : `目前人數: ${party.currentPlayers} / ${party.maxPlayers}`}
                         </span>
                         <button className="btn-join" onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/party/${party.id}`, { state: { party } });
+                          navigate(`/party/${party.id}`, { state: navState });
                         }}>
-                          {activeTab === 'history' ? '查看回顧' : (isHost ? '管理' : isParticipant ? '已報名' : '報名參加')}
+                          {isHistoryTab ? '查看回顧' : (isHost ? '管理' : isParticipant ? '已報名' : '報名參加')}
                         </button>
                       </div>
                     </div>

@@ -102,13 +102,28 @@ const adminApi = {
 
   /**
    * 更新玩家信譽積分 (限 Admin)
-   * @param {number|string} userId 
-   * @param {number} creditPoint 
+   * @param {number|string} userId
+   * @param {number} creditPoint
    * @returns {Promise}
    */
   updateUserReputation: (userId, creditPoint) => {
     return axiosClient.patch(`/users/${userId}/reputation/`, { credit_point: creditPoint });
-  }
+  },
+
+  /** 取得回饋類型列表 */
+  getFeedbackTypes: () => axiosClient.get('/feedback-types/'),
+
+  /** 新增回饋類型 (Admin) */
+  createFeedbackType: (name) => axiosClient.post('/feedback-types/', { name }),
+
+  /** 刪除回饋類型 (Admin) */
+  deleteFeedbackType: (id) => axiosClient.delete(`/feedback-types/${id}/`),
+
+  /** 新增球場 (Admin) */
+  createCourt: (data) => axiosClient.post('/courts/', data),
+
+  /** 刪除球場 (Admin) */
+  deleteCourt: (id) => axiosClient.delete(`/courts/${id}/`),
 };
 
 export default adminApi;

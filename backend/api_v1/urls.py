@@ -4,8 +4,8 @@ from .views import (
     AuthLoginView, AuthRegisterView, UserViewSet, SportViewSet, VenueViewSet, CourtViewSet,
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
-    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, AnnouncementViewSet,
-    upload_image
+    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, FeedbackTypeViewSet,
+    AnnouncementViewSet, upload_image
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -28,6 +28,7 @@ router.register('notifications', NotificationViewSet, basename='notification')
 router.register('announcements', AnnouncementViewSet, basename='announcement')
 router.register('feedback', FeedbackViewSet, basename='feedback')
 router.register('admin/feedbacks', FeedbackViewSet, basename='admin-feedback')
+router.register('feedback-types', FeedbackTypeViewSet, basename='feedback-type')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -391,9 +391,20 @@ class Blacklist(models.Model):
 #     class Meta:
 #         db_table = 'user_availability'
 
+class FeedbackType(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = 'feedback_types'
+        managed = FORCE_SQLITE  # MySQL 模式需手動建表，見 db/nojo_schema.sql
+
 class Feedback(models.Model):
     id = models.AutoField(primary_key=True, db_column='feedback_id')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
     type = models.CharField(max_length=50, default='建議')
     content = models.TextField()
     is_handled = models.BooleanField(default=False)

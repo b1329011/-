@@ -162,10 +162,53 @@ function Home() {
     fetchData();
   }, []);
 
+  // 取得回饋類型
+  useEffect(() => {
+    adminApi.getFeedbackTypes()
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.results || []);
+        setFeedbackTypes(list);
+        if (list.length > 0) setFeedback(f => ({ ...f, type: f.type || list[0].name }));
+      })
+      .catch(() => {
+        // fallback：後端無表時使用預設
+        const defaults = [
+          { id: 1, name: '建議' },
+          { id: 2, name: '問題回報 (Bug)' },
+          { id: 3, name: '場地相關' },
+          { id: 4, name: '活動相關' },
+          { id: 5, name: '其他' },
+        ];
+        setFeedbackTypes(defaults);
+        setFeedback(f => ({ ...f, type: f.type || defaults[0].name }));
+      });
+  }, []);
+
+  // 通知輪詢：每 30 秒更新一次（Feature 6）
+  useEffect(() => {
+    const pollNotifications = setInterval(async () => {
+      try {
+        const data = await import('../api/notifications').then(m => m.default.getNotifications());
+        const list = Array.isArray(data) ? data : (data.results || []);
+        const mapped = list.map(n => ({
+          id: n.notification_id || n.id,
+          text: n.message,
+          time: n.created_at ? new Date(n.created_at).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+          read: n.is_read,
+        }));
+        setNotifications(mapped);
+      } catch (err) {
+        // 靜默失敗
+      }
+    }, 30000);
+    return () => clearInterval(pollNotifications);
+  }, []);
+
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [feedback, setFeedback] = useState({ type: '建議', content: '' });
+  const [feedback, setFeedback] = useState({ type: '', content: '' });
+  const [feedbackTypes, setFeedbackTypes] = useState([]);
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [newParty, setNewParty] = useState({ 
@@ -768,9 +811,27 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">性別限制</label>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
+                      {['不限', '限男', '限女'].map(opt => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setNewParty({...newParty, genderLimit: opt})}
+                          style={{
+                            flex: 1,
+                            padding: '14px 8px',
+                            fontSize: '15px',
+                            fontWeight: '700',
+                            borderRadius: '10px',
+                            border: `2px solid ${newParty.genderLimit === opt ? '#7995a5' : '#e2e8f0'}`,
+                            backgroundColor: newParty.genderLimit === opt ? '#7995a5' : 'white',
+                            color: newParty.genderLimit === opt ? 'white' : '#475569',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {opt}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <div className="form-group">
@@ -885,10 +946,9 @@ function Home() {
               <div className="form-group">
                 <label className="form-label">回饋類型</label>
                 <select className="form-input" value={feedback.type} onChange={e => setFeedback({...feedback, type: e.target.value})}>
-                  <option value="建議">功能建議</option>
-                  <option value="錯誤">問題回報 (Bug)</option>
-                  <option value="場地">場地相關</option>
-                  <option value="其他">其他</option>
+                  {feedbackTypes.map(ft => (
+                    <option key={ft.id} value={ft.name}>{ft.name}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">

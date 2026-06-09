@@ -10,13 +10,15 @@ function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [registerError, setRegisterError] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setRegisterError('');
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      alert('請輸入有效的電子郵件格式！');
+      setRegisterError('請輸入有效的電子郵件格式！');
       return;
     }
     if (password.length < 6) {
@@ -26,18 +28,16 @@ function Register() {
       setPasswordError('');
     }
     if (password !== confirmPassword) {
-      alert('兩次密碼輸入不一致喔！');
+      setRegisterError('兩次密碼輸入不一致，請重新確認！');
       return;
     }
 
     setIsLoading(true);
     try {
-      // 註冊前先清空可能殘留的舊 Token，避免 DRF 報錯 (Invalid Token)
       localStorage.removeItem('token');
       localStorage.removeItem('role');
       const response = await authApi.register({ name: nickname, email, password });
-      
-      // 儲存 Django 回傳的 token
+
       if (response && response.token) {
         localStorage.setItem('token', response.token);
       }
@@ -47,12 +47,24 @@ function Register() {
       if (response && response.role) {
         localStorage.setItem('role', response.role);
       }
-      
+
       alert('註冊成功！請繼續完成個人檔案設定。');
       navigate('/setup-profile');
     } catch (error) {
       console.error('Register error:', error);
-      alert('註冊失敗，請確認信箱是否已被使用或伺服器狀態！');
+      // 解析後端錯誤訊息
+      const errData = error.response?.data;
+      if (errData) {
+        const msg = errData.detail
+          || errData.email?.[0]
+          || errData.name?.[0]
+          || errData.password?.[0]
+          || Object.values(errData).flat().join('、')
+          || '註冊失敗，請稍後再試。';
+        setRegisterError(msg);
+      } else {
+        setRegisterError('無法連線至伺服器，請確認網路狀態後再試。');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -123,6 +135,11 @@ function Register() {
             />
           </div>
           
+          {registerError && (
+            <div style={{ backgroundColor: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', color: '#dc2626', fontSize: '14px' }}>
+              {registerError}
+            </div>
+          )}
           <button type="submit" className="login-button" style={{ marginTop: '10px' }} disabled={isLoading}>
             {isLoading ? '註冊中...' : '完成註冊'}
           </button>

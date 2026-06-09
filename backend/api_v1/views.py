@@ -2,6 +2,7 @@ import math
 from datetime import timedelta
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, status, permissions, mixins, filters
@@ -14,9 +15,10 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist,
-    Notification, GameBulletin, Feedback, Announcement, Facility
+    Notification, GameBulletin, Feedback, FeedbackType, Announcement, Facility
 )
 from .serializers import (
+    FeedbackTypeSerializer,
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
     GameMatchListSerializer, MatchParticipantUserSerializer,
@@ -101,14 +103,17 @@ class AuthRegisterView(APIView):
         password = request.data.get('password')
 
         if not name or not email or not password:
-            return Response({"detail": "name, email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response({"detail": "暱稱、電子信箱與密碼均為必填欄位。"}, status=status.HTTP_400_BAD_REQUEST)
+
         import re
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-            return Response({"detail": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "電子信箱格式不正確，請輸入有效的信箱地址。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(password) < 6:
+            return Response({"detail": "密碼長度至少需要 6 個字元。"}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(email=email).exists():
-            return Response({"detail": "Email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "此電子信箱已被註冊，請使用其他信箱或直接登入。"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user = User.objects.create_user(email=email, name=name, password=password)
@@ -119,7 +124,7 @@ class AuthRegisterView(APIView):
                 "role": user.role
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": f"註冊失敗：{str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
 class AuthLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -481,6 +486,30 @@ class CourtViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [IsAdminRole()]
 
+    def create(self, request, *args, **kwargs):
+        venue_id = request.data.get('venue')
+        base_price = request.data.get('base_price', 0)
+        sport_ids = request.data.get('sport_ids', [])
+
+        venue = get_object_or_404(Venue, pk=venue_id)
+        court = Court.objects.create(venue=venue, base_price=base_price)
+
+        for sid in sport_ids:
+            sport = Sport.objects.filter(id=sid).first()
+            if sport:
+                court.sports.add(sport)
+
+        serializer = self.get_serializer(court)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        court = self.get_object()
+        active = GameMatch.objects.filter(court=court, match_status__in=['recruiting', 'full', 'started'])
+        if active.exists():
+            return Response({"detail": "此球場有進行中的球局，無法刪除。"}, status=status.HTTP_409_CONFLICT)
+        court.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 def get_match_start_datetime(match):
     """
     Given a GameMatch, return its timezone-aware start datetime.
@@ -637,26 +666,27 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def history(self, request):
         # 確保狀態機是最新的
         update_all_match_statuses()
-        
+
         user = request.user
         now = timezone.now()
-        
-        # 篩選已參加且標記為 closed 的球局
+        today = now.date()
+
+        # 篩選已參加（含主揪）且已結束的球局
+        # 條件：狀態為 closed，或預訂日期早於今天（確保狀態機未及時更新時也能撈到）
         queryset = GameMatch.objects.filter(
-            participants__user=user,
-            match_status='closed'
+            Q(participants__user=user) | Q(creator=user),
+            Q(match_status='closed') | Q(booking_date__lt=today)
         ).select_related(
             'sport', 'court__venue__address', 'creator'
         ).prefetch_related(
             'participants__user'
         ).distinct().order_by('-booking_date', '-time_slot')
-        
+
+        # 精確過濾：狀態已是 closed 直接納入；否則需結束時間 <= 現在
         valid_matches = []
         for match in queryset:
-            # 額外校驗：確保人數達標且時間確實已結束
-            if match.current_players_count >= match.least_players:
-                if get_match_end_datetime(match) <= now:
-                    valid_matches.append(match)
+            if match.match_status == 'closed' or get_match_end_datetime(match) <= now:
+                valid_matches.append(match)
                 
         lat = request.query_params.get('lat')
         lng = request.query_params.get('lng')
@@ -1026,7 +1056,11 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
         # 3. Double booking check
         if match.participants.filter(user=user).exists():
-            return Response({"detail": "You are already a participant in this match."}, status=status.HTTP_400_BAD_REQUEST)
+            all_parts = match.participants.all().order_by('joined_at')
+            is_on_waitlist = list(all_parts).index(match.participants.filter(user=user).first()) >= match.most_players if match.participants.filter(user=user).exists() else False
+            if is_on_waitlist:
+                return Response({"detail": "您已在候補名單中，無法重複加入。", "already": "waitlist"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "您已報名此球局，無法重複加入。", "already": "joined"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 3.5 Gender limit check
         if match.gender_limit == '限男' and user.gender != '男':
@@ -1081,6 +1115,12 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 "position": pos,
                 "message": f"球局已滿，已自動為您排入候補名單，目前順位為第 {pos} 位。"
             }
+            # 通知主揪有人加入候補
+            Notification.objects.create(
+                user=match.creator,
+                match=match,
+                message=f"候補通知：{user.name} 加入了您的球局「{match.game_name}」候補名單（第 {pos} 位）。"
+            )
         else:
             if current_count + 1 >= match.most_players:
                 match.match_status = 'full'
@@ -1089,6 +1129,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 "status": "joined",
                 "message": "成功加入球局。"
             }
+            # 通知主揪有人加入
+            if match.creator != user:
+                Notification.objects.create(
+                    user=match.creator,
+                    match=match,
+                    message=f"報名通知：{user.name} 加入了您的球局「{match.game_name}」！目前參加人數：{current_count + 1}/{match.most_players}。"
+                )
+
+        # 回傳最新人數供前端即時更新
+        updated_count = MatchParticipant.objects.filter(match=match).count()
+        response_data['current_players'] = min(updated_count, match.most_players)
+        response_data['current_waitlist'] = max(0, updated_count - match.most_players)
 
         return Response(response_data, status=status.HTTP_200_OK)
 
@@ -1797,8 +1849,8 @@ class AdminAnalyticsView(APIView):
         
         # Today's active users: users who are participants in a match today or created a match today
         active_users = User.objects.filter(
-            models.Q(created_matches__booking_date=today) | 
-            models.Q(matchparticipant__match__booking_date=today)
+            Q(created_matches__booking_date=today) |
+            Q(matchparticipant__match__booking_date=today)
         ).distinct().count()
         
         # If no one is active today, show total users as a fallback or just show 0
@@ -1817,9 +1869,16 @@ class AdminAnalyticsView(APIView):
             
             sports_ratio[s.chinese_name] = count
         
+        # 以活動開始日期(booking_date)的星期幾分組，週一=0 ~ 週日=6
+        from django.db.models.functions import ExtractWeekDay
+        # ExtractWeekDay: 1=Sunday, 2=Monday, ..., 7=Saturday (ISO)
+        weekday_counts = {i: 0 for i in range(7)}  # 0=Mon ... 6=Sun
+        for match in GameMatch.objects.all():
+            # booking_date.weekday(): 0=Mon, 6=Sun
+            wd = match.booking_date.weekday()
+            weekday_counts[wd] += 1
         activity_trend = [
-            {"date": str(today - timezone.timedelta(days=i)), 
-             "count": GameMatch.objects.filter(booking_date=today - timezone.timedelta(days=i)).count()}
+            {"weekday": i, "count": weekday_counts[i]}
             for i in range(7)
         ]
         
@@ -1842,6 +1901,21 @@ class DemoWeatherView(APIView):
         value = request.data.get('value', 50)
         # WeatherData is commented out
         return Response({"detail": f"Demo weather suitability updated to {value}% (Mocked)"}, status=status.HTTP_200_OK)
+
+class FeedbackTypeViewSet(viewsets.ModelViewSet):
+    queryset = FeedbackType.objects.none()
+    serializer_class = FeedbackTypeSerializer
+
+    def get_queryset(self):
+        try:
+            return FeedbackType.objects.all().order_by('id')
+        except Exception:
+            return FeedbackType.objects.none()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [IsAdminRole()]
 
 class FeedbackViewSet(viewsets.ModelViewSet):
     queryset = Feedback.objects.all().order_by('-created_at')
