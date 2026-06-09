@@ -72,7 +72,17 @@ if (-not $frontend_url) {
     exit
 }
 
-# 7. Show QR Code and Results
+# 7. Show QR Code and Results in a separate popup window
+Write-Host "==========================================" -ForegroundColor Magenta
+Write-Host "🎉 Deployment Successful!" -ForegroundColor Green
+Write-Host "Backend API: $backend_url/api/"
+Write-Host "Frontend URL: $frontend_url/nojo/" -ForegroundColor White
+Write-Host "==========================================" -ForegroundColor Magenta
+Write-Host ""
+Write-Host "✨ Opening a separate window for Frontend URL & QR Code..." -ForegroundColor Cyan
+
+$popupScript = @"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Clear-Host
 Write-Host "==========================================" -ForegroundColor Magenta
 Write-Host "🎉 Deployment Successful!" -ForegroundColor Green
@@ -81,13 +91,10 @@ Write-Host "Frontend URL: $frontend_url/nojo/" -ForegroundColor White
 Write-Host "==========================================" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "📱 Scan the QR Code below with your phone:" -ForegroundColor Yellow
-
-# Fetch ASCII QR Code
 try {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $response = Invoke-WebRequest -Uri "https://qrenco.de/$frontend_url/nojo/" -UserAgent "curl/7.54.0" -UseBasicParsing -TimeoutSec 10
-    if ($response.Content) {
-        Write-Host $response.Content
+    `$response = Invoke-WebRequest -Uri "https://qrenco.de/$frontend_url/nojo/" -UserAgent "curl/7.54.0" -UseBasicParsing -TimeoutSec 10
+    if (`$response.Content) {
+        Write-Host `$response.Content
     } else {
         Write-Host "QR Code service returned empty content." -ForegroundColor Gray
     }
@@ -95,9 +102,16 @@ try {
     Write-Host "Could not fetch QR Code from qrenco.de." -ForegroundColor Gray
     Write-Host "Please visit the URL manually: $frontend_url/nojo/" -ForegroundColor Gray
 }
+Write-Host ""
+Write-Host "Press Enter to close this window..." -ForegroundColor Gray
+Read-Host
+"@
+
+$encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($popupScript))
+Start-Process powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy Bypass", "-EncodedCommand", $encodedScript
 
 Write-Host ""
-Write-Host "Press Ctrl+C to stop this script. You might need to manually close python/node processes." -ForegroundColor Gray
+Write-Host "Press Ctrl+C to stop this script. Keep this main window open to keep the servers and tunnels running." -ForegroundColor Gray
 
 # Keep script running to show logs
 Get-Content $FE_LOG -Wait
