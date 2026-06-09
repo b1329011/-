@@ -208,6 +208,17 @@ function PartyDetail() {
 	const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
 	const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
 
+	// 判斷是否為歷史球局 (已結束或已關閉)
+	const isHistory = useMemo(() => {
+		const status = party.match_status || party.status || party.game_status;
+		return (
+			status === "closed" ||
+			status === "failed_to_start" ||
+			status === "已結束" ||
+			status === "已關閉"
+		);
+	}, [party]);
+
 	// 當打開名單 Modal 時，向後端索取真實資料
 	useEffect(() => {
 		if (showListModal) {
@@ -616,7 +627,7 @@ function PartyDetail() {
 					</div>
 
 					<div style={{ padding: "40px" }}>
-						{isUserHost && party.venueStatus === "pending" && (
+						{isUserHost && !isHistory && party.venueStatus === "pending" && (
 							<div
 								style={{
 									backgroundColor: "#f8fafc",
@@ -922,62 +933,66 @@ function PartyDetail() {
 						</div>
 
 						{/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
-						{!isUserHost && (
-							<div
-								style={{
-									fontSize: "12px",
-									color: "#64748b",
-									textAlign: "center",
-									margin: "20px auto 12px auto",
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: "4px",
-									backgroundColor: "#f1f5f9",
-									padding: "8px",
-									borderRadius: "8px",
-									maxWidth: "600px",
-								}}
-							>
-								<span style={{ color: "#f59e0b" }}>⚠️</span> 取消截止時間：05/28
-								20:00，逾期將無法取消報名
-							</div>
+						{!isHistory && (
+							<>
+								{!isUserHost && (
+									<div
+										style={{
+											fontSize: "12px",
+											color: "#64748b",
+											textAlign: "center",
+											margin: "20px auto 12px auto",
+											display: "flex",
+											alignItems: "center",
+											justifyContent: "center",
+											gap: "4px",
+											backgroundColor: "#f1f5f9",
+											padding: "8px",
+											borderRadius: "8px",
+											maxWidth: "600px",
+										}}
+									>
+										<span style={{ color: "#f59e0b" }}>⚠️</span> 取消截止時間：05/28
+										20:00，逾期將無法取消報名
+									</div>
+								)}
+								<div style={{ display: "flex", justifyContent: "center" }}>
+									{isUserHost ? (
+										<button
+											className="btn-action cancel"
+											style={{ width: "100%" }}
+											onClick={handleDeleteGame}
+										>
+											取消揪團
+										</button>
+									) : hasJoined ? (
+										<button className="btn-action cancel" onClick={handleCancel}>
+											{isWaitlisted ? "取消候補" : "取消報名"}
+										</button>
+									) : isFull && isWaitlistFull ? (
+										<button className="btn-action disabled" disabled>
+											已完全額滿
+										</button>
+									) : isFull ? (
+										<button
+											className="btn-action waitlist"
+											style={{ width: "100%" }}
+											onClick={handleJoin}
+										>
+											排候補
+										</button>
+									) : (
+										<button
+											className="btn-action join"
+											style={{ width: "100%" }}
+											onClick={handleJoin}
+										>
+											報名參加
+										</button>
+									)}
+								</div>
+							</>
 						)}
-						<div style={{ display: "flex", justifyContent: "center" }}>
-							{isUserHost ? (
-								<button
-									className="btn-action cancel"
-									style={{ width: "100%" }}
-									onClick={handleDeleteGame}
-								>
-									取消揪團
-								</button>
-							) : hasJoined ? (
-								<button className="btn-action cancel" onClick={handleCancel}>
-									{isWaitlisted ? "取消候補" : "取消報名"}
-								</button>
-							) : isFull && isWaitlistFull ? (
-								<button className="btn-action disabled" disabled>
-									已完全額滿
-								</button>
-							) : isFull ? (
-								<button
-									className="btn-action waitlist"
-									style={{ width: "100%" }}
-									onClick={handleJoin}
-								>
-									排候補
-								</button>
-							) : (
-								<button
-									className="btn-action join"
-									style={{ width: "100%" }}
-									onClick={handleJoin}
-								>
-									報名參加
-								</button>
-							)}
-						</div>
 					</div>
 				</div>
 			</main>
@@ -1582,7 +1597,7 @@ function PartyDetail() {
 							)}
 						</div>
 
-						{isUserHost && (
+						{isUserHost && !isHistory && (
 							<div
 								style={{
 									borderTop: "1px solid #e2e8f0",
