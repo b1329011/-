@@ -534,9 +534,10 @@ def update_all_match_statuses():
         start_time = get_match_start_datetime(match)
         end_time = get_match_end_datetime(match)
         
-        # 1. Check if 24 hours before start (Notify participants)
+        # 1. Check if 24 hours / 30 minutes before start (Notify participants)
         if match.match_status in ['recruiting', 'full']:
-            if 0 < (start_time - now).total_seconds() <= 86400:
+            time_diff = (start_time - now).total_seconds()
+            if 1800 < time_diff <= 86400:
                 for p in match.participants.all():
                     msg_contains = "將在 24 小時內開始"
                     if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
@@ -544,6 +545,15 @@ def update_all_match_statuses():
                             user=p.user,
                             match=match,
                             message=f"【活動提醒】您參與的球局「{match.game_name}」將在 24 小時內開始！請準時抵達。"
+                        )
+            elif 0 < time_diff <= 1800:
+                for p in match.participants.all():
+                    msg_contains = "將在 30 分鐘內開始"
+                    if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
+                        Notification.objects.create(
+                            user=p.user,
+                            match=match,
+                            message=f"【活動提醒】您參與的球局「{match.game_name}」將在 30 分鐘內開始！請做好準備。"
                         )
         
         # 2. Check time transitions
@@ -568,7 +578,7 @@ def update_all_match_statuses():
                         for p in match.participants.all():
                             Notification.objects.create(
                                 user=p.user,
-                                match=match,
+                                match=None,
                                 message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限（{match.least_players}人）已取消。"
                             )
                         match.delete()
@@ -597,7 +607,7 @@ def update_all_match_statuses():
                     for p in match.participants.all():
                         Notification.objects.create(
                             user=p.user,
-                            match=match,
+                            match=None,
                             message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限已取消。"
                         )
                     match.delete()
@@ -921,7 +931,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             if p.user != match.creator:
                 Notification.objects.create(
                     user=p.user,
-                    match=match,
+                    match=None,
                     message=f"【活動取消】您參與的球局「{match.game_name}」已被主揪取消。"
                 )
                 
@@ -1293,13 +1303,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         for p in participants:
             if is_failed:
                 msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。"
+                Notification.objects.create(
+                    user=p.user,
+                    match=None,
+                    message=msg
+                )
             else:
                 msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
-            Notification.objects.create(
-                user=p.user,
-                match=match,
-                message=msg
-            )
+                Notification.objects.create(
+                    user=p.user,
+                    match=match,
+                    message=msg
+                )
 
         if is_failed:
             match.delete()
