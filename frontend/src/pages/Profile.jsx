@@ -25,7 +25,9 @@ function Profile() {
     role: localStorage.getItem('role') || ''
   });
   const [reputation, setReputation] = useState({ score: 100, label: '優良玩家，從不爽約！' });
-  const [myParties, setMyParties] = useState([]);
+  const [activeTab, setActiveTab] = useState('ongoing');
+  const [ongoingParties, setOngoingParties] = useState([]);
+  const [historyParties, setHistoryParties] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -58,52 +60,63 @@ function Profile() {
           });
         }
 
+        const currentUserId = localStorage.getItem('user_id');
+        const reverseLevelMap = {
+          'C': '休閒',
+          'B': '業餘',
+          'A': '高手',
+          'S': '高手',
+          '新手': '休閒',
+          '休閒': '休閒',
+          '業餘': '業餘',
+          '高手': '高手'
+        };
+
+        const transformGame = (newGame) => {
+          const rawType = newGame.type || newGame.sport_type || newGame.sport_name || (newGame.sport?.name) || '未分類';
+          const originalLevel = newGame.level || newGame.target_level || 'C';
+          const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
+          return {
+            ...newGame,
+            id: newGame.id,
+            title: newGame.title || newGame.game_name || newGame.description?.substring(0, 10) || '無標題',
+            type: rawType,
+            level: rawLevel,
+            genderLimit: newGame.genderLimit || newGame.gender_limit || '不限',
+            location: newGame.location || newGame.venue_name || '未指定地點',
+            description: newGame.description || newGame.game_note || '',
+            game_note: newGame.game_note || '',
+            currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
+            maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
+            currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
+            maxPlayers: newGame.maxPlayers ?? newGame.most_players ?? newGame.max_players ?? 6,
+            participants: newGame.participants || [],
+            time: newGame.time || (newGame.booking_date && newGame.time_slot ? `${newGame.booking_date} ${newGame.time_slot}` : '時間未定'),
+          };
+        };
+
+        // Fetch Ongoing Games
         try {
           const gamesData = await gamesApi.getGames();
           const rawGames = Array.isArray(gamesData.results) ? gamesData.results : (Array.isArray(gamesData) ? gamesData : []);
-          const currentUserId = localStorage.getItem('user_id');
-          
-          const reverseLevelMap = {
-            'C': '休閒',
-            'B': '業餘',
-            'A': '高手',
-            'S': '高手',
-            '新手': '休閒',
-            '休閒': '休閒',
-            '業餘': '業餘',
-            '高手': '高手'
-          };
           
           const userGames = rawGames.filter(party => {
             const isHost = party.creator_id && String(party.creator_id) === String(currentUserId);
-            const isParticipant = party.participant_ids?.some(id => String(id) === String(currentUserId));
-            const isWaitlisted = party.waitlist_ids?.some(id => String(id) === String(currentUserId));
-            return isHost || isParticipant || isWaitlisted;
-          }).map(newGame => {
-            const rawType = newGame.type || newGame.sport_type || newGame.sport_name || (newGame.sport?.name) || '未分類';
-            const originalLevel = newGame.level || newGame.target_level || 'C';
-            const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
-            return {
-              ...newGame,
-              id: newGame.id,
-              title: newGame.title || newGame.game_name || newGame.description?.substring(0, 10) || '無標題',
-              type: rawType,
-              level: rawLevel,
-              genderLimit: newGame.genderLimit || newGame.gender_limit || '不限',
-              location: newGame.location || newGame.venue_name || '未指定地點',
-              description: newGame.description || newGame.game_note || '',
-              game_note: newGame.game_note || '',
-              currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
-              maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
-              currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
-              maxPlayers: newGame.maxPlayers ?? newGame.most_players ?? newGame.max_players ?? 6,
-              participants: newGame.participants || [],
-              time: newGame.time || (newGame.booking_date && newGame.start_time ? `${newGame.booking_date} ${newGame.start_time}` : '時間未定'),
-            };
-          });
-          setMyParties(userGames);
+            const isParticipant = party.participants?.some(p => String(p.user_id || p.id) === String(currentUserId));
+            return isHost || isParticipant;
+          }).map(transformGame);
+          setOngoingParties(userGames);
         } catch (e) {
-          console.error('Failed to fetch user games:', e);
+          console.error('Failed to fetch ongoing games:', e);
+        }
+
+        // Fetch History Games
+        try {
+          const historyData = await gamesApi.getHistory();
+          const rawHistory = Array.isArray(historyData) ? historyData : [];
+          setHistoryParties(rawHistory.map(transformGame));
+        } catch (e) {
+          console.error('Failed to fetch history games:', e);
         }
 
       } catch (error) {
@@ -409,17 +422,43 @@ function Profile() {
 
           {/* 右側：揪團紀錄 */}
           <div className="profile-content">
-            <div className="content-header">
-              <h2>我的揪團紀錄</h2>
+            <div className="content-header" style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '20px', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                <h2 
+                  onClick={() => setActiveTab('ongoing')}
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: activeTab === 'ongoing' ? '#7995a5' : '#94a3b8',
+                    borderBottom: activeTab === 'ongoing' ? '3px solid #7995a5' : 'none',
+                    paddingBottom: '5px',
+                    margin: 0,
+                    fontSize: '1.2rem'
+                  }}
+                >
+                  進行中球局
+                </h2>
+                <h2 
+                  onClick={() => setActiveTab('history')}
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: activeTab === 'history' ? '#7995a5' : '#94a3b8',
+                    borderBottom: activeTab === 'history' ? '3px solid #7995a5' : 'none',
+                    paddingBottom: '5px',
+                    margin: 0,
+                    fontSize: '1.2rem'
+                  }}
+                >
+                  歷史紀錄
+                </h2>
+              </div>
             </div>
             
             <div className="party-grid" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {myParties.length > 0 ? (
-                myParties.map(party => {
+              {(activeTab === 'ongoing' ? ongoingParties : historyParties).length > 0 ? (
+                (activeTab === 'ongoing' ? ongoingParties : historyParties).map(party => {
                   const currentUserId = localStorage.getItem('user_id');
                   const isHost = currentUserId && (party.creator_id && String(party.creator_id) === String(currentUserId));
-                  const isParticipant = currentUserId && party.participant_ids?.some(id => String(id) === String(currentUserId));
-                  const isWaitlisted = currentUserId && party.waitlist_ids?.some(id => String(id) === String(currentUserId));
+                  const isParticipant = currentUserId && party.participants?.some(p => String(p.user_id || p.id) === String(currentUserId));
 
                   const isFull = party.currentPlayers >= party.maxPlayers;
                   const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
@@ -443,33 +482,14 @@ function Profile() {
                     badgeStatusText = '已開始';
                     badgeStatusColor = '#10b981'; // Green
                   } else if (backendStatus === '已關閉' || backendStatus === 'closed' || backendStatus === 'failed_to_start') {
-                    badgeStatusText = '已關閉';
+                    badgeStatusText = '已結束';
                     badgeStatusColor = '#64748b'; // Gray
                   } else if (backendStatus === '已滿' || backendStatus === 'full') {
-                    if (!isWaitlistFull) {
-                      badgeStatusText = '可候補';
-                      badgeStatusColor = '#f59e0b'; // Orange
-                    } else {
-                      badgeStatusText = '已滿';
-                      badgeStatusColor = '#94a3b8'; // Gray
-                    }
-                  } else if (backendStatus === '可候補' || backendStatus === 'waitlisting') {
-                    badgeStatusText = '可候補';
-                    badgeStatusColor = '#f59e0b'; // Orange
+                    badgeStatusText = isWaitlistFull ? '已滿' : '可候補';
+                    badgeStatusColor = isWaitlistFull ? '#94a3b8' : '#f59e0b';
                   } else if (backendStatus === '缺人' || backendStatus === 'recruiting') {
                     badgeStatusText = '缺人';
                     badgeStatusColor = '#ef4444'; // Red
-                  } else {
-                    if (isFull && isWaitlistFull) {
-                      badgeStatusText = '已滿';
-                      badgeStatusColor = '#94a3b8';
-                    } else if (isFull) {
-                      badgeStatusText = '可候補';
-                      badgeStatusColor = '#f59e0b';
-                    } else {
-                      badgeStatusText = '缺人';
-                      badgeStatusColor = '#ef4444';
-                    }
                   }
 
                   return (
@@ -490,7 +510,7 @@ function Profile() {
                             </span>
                           )}
                         </div>
-                        {badgeStatusText !== '已關閉' && (
+                        {activeTab === 'ongoing' && (
                           <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
                         )}
                       </div>
@@ -500,16 +520,14 @@ function Profile() {
                         <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
                       </div>
                       <div className="party-card-footer">
-                        {badgeStatusText !== '已關閉' ? (
-                          <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
-                        ) : (
-                          <span className="player-count"></span>
-                        )}
+                        <span className="player-count">
+                          {activeTab === 'ongoing' ? `目前人數: ${party.currentPlayers} / ${party.maxPlayers}` : `最終人數: ${party.currentPlayers}`}
+                        </span>
                         <button className="btn-join" onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/party/${party.id}`, { state: { party } });
                         }}>
-                          {isHost ? '管理' : isParticipant ? '已報名' : isWaitlisted ? '已候補' : isFull && isWaitlistFull ? '查看詳情' : isFull ? '排候補' : '報名參加'}
+                          {activeTab === 'history' ? '查看回顧' : (isHost ? '管理' : isParticipant ? '已報名' : '報名參加')}
                         </button>
                       </div>
                     </div>
@@ -517,7 +535,7 @@ function Profile() {
                 })
               ) : (
                 <div style={{ minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <p style={{ color: '#94a3b8', fontSize: '15px' }}>目前尚無揪團紀錄</p>
+                  <p style={{ color: '#94a3b8', fontSize: '15px' }}>目前尚無{activeTab === 'ongoing' ? '揪團' : '歷史'}紀錄</p>
                 </div>
               )}
             </div>

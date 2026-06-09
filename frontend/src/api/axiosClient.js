@@ -3,7 +3,7 @@ import axios from "axios";
 // 建立 Axios 實體
 const axiosClient = axios.create({
 	// 優先使用環境變數中的 VITE_API_BASE_URL，若無則回退至 localhost
-	baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8088/api/", 
+	baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/",
 	headers: {
 		"Content-Type": "application/json",
 		"ngrok-skip-browser-warning": "true", // 繞過 ngrok/cloudflare 的警告頁面 (有些 tunnel 服務需要)

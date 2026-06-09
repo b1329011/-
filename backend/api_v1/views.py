@@ -534,9 +534,10 @@ def update_all_match_statuses():
         start_time = get_match_start_datetime(match)
         end_time = get_match_end_datetime(match)
         
-        # 1. Check if 24 hours before start (Notify participants)
+        # 1. Check if 24 hours / 30 minutes before start (Notify participants)
         if match.match_status in ['recruiting', 'full']:
-            if 0 < (start_time - now).total_seconds() <= 86400:
+            time_diff = (start_time - now).total_seconds()
+            if 1800 < time_diff <= 86400:
                 for p in match.participants.all():
                     msg_contains = "將在 24 小時內開始"
                     if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
@@ -544,6 +545,15 @@ def update_all_match_statuses():
                             user=p.user,
                             match=match,
                             message=f"【活動提醒】您參與的球局「{match.game_name}」將在 24 小時內開始！請準時抵達。"
+                        )
+            elif 0 < time_diff <= 1800:
+                for p in match.participants.all():
+                    msg_contains = "將在 30 分鐘內開始"
+                    if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
+                        Notification.objects.create(
+                            user=p.user,
+                            match=match,
+                            message=f"【活動提醒】您參與的球局「{match.game_name}」將在 30 分鐘內開始！請做好準備。"
                         )
         
         # 2. Check time transitions
@@ -568,7 +578,7 @@ def update_all_match_statuses():
                         for p in match.participants.all():
                             Notification.objects.create(
                                 user=p.user,
-                                match=match,
+                                match=None,
                                 message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限（{match.least_players}人）已取消。"
                             )
                         match.delete()
@@ -597,7 +607,7 @@ def update_all_match_statuses():
                     for p in match.participants.all():
                         Notification.objects.create(
                             user=p.user,
-                            match=match,
+                            match=None,
                             message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限已取消。"
                         )
                     match.delete()
@@ -625,15 +635,62 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='history')
     def history(self, request):
+        # 確保狀態機是最新的
+        update_all_match_statuses()
+        
         user = request.user
+        now = timezone.now()
+        
+        # 篩選已參加且標記為 closed 的球局
         queryset = GameMatch.objects.filter(
             participants__user=user,
             match_status='closed'
         ).select_related(
             'sport', 'court__venue__address', 'creator'
+        ).prefetch_related(
+            'participants__user'
         ).distinct().order_by('-booking_date', '-time_slot')
         
-        serializer = GameMatchListSerializer(queryset, many=True)
+        valid_matches = []
+        for match in queryset:
+            # 額外校驗：確保人數達標且時間確實已結束
+            if match.current_players_count >= match.least_players:
+                if get_match_end_datetime(match) <= now:
+                    valid_matches.append(match)
+                
+        lat = request.query_params.get('lat')
+        lng = request.query_params.get('lng')
+        radius = request.query_params.get('radius') # in km
+
+        matches_list = []
+        for match in valid_matches:
+            # 1. Weather calculation
+            city = match.court.venue.address.city if match.court and match.court.venue and match.court.venue.address else None
+            district = match.court.venue.address.district if match.court and match.court.venue and match.court.venue.address else None
+            
+            rain_prob = 0.2
+            aqi = 50
+            weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
+            match.weather = round(weather_idx, 1)
+            
+            # 2. Distance calculation
+            dist = None
+            if lat is not None and lng is not None:
+                venue_lat = match.court.venue.latitude if match.court and match.court.venue else None
+                venue_lng = match.court.venue.longitude if match.court and match.court.venue else None
+                if venue_lat is not None and venue_lng is not None:
+                    dist = haversine_distance(float(lat), float(lng), float(venue_lat), float(venue_lng))
+            
+            match.distance_km = dist
+            
+            # Apply radius filter
+            if radius is not None and dist is not None:
+                if dist > float(radius):
+                    continue
+            
+            matches_list.append(match)
+
+        serializer = GameMatchListSerializer(matches_list, many=True)
         return Response(serializer.data)
 
     def get_permissions(self):
@@ -874,7 +931,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             if p.user != match.creator:
                 Notification.objects.create(
                     user=p.user,
-                    match=match,
+                    match=None,
                     message=f"【活動取消】您參與的球局「{match.game_name}」已被主揪取消。"
                 )
                 
@@ -1246,13 +1303,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         for p in participants:
             if is_failed:
                 msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。"
+                Notification.objects.create(
+                    user=p.user,
+                    match=None,
+                    message=msg
+                )
             else:
                 msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
-            Notification.objects.create(
-                user=p.user,
-                match=match,
-                message=msg
-            )
+                Notification.objects.create(
+                    user=p.user,
+                    match=match,
+                    message=msg
+                )
 
         if is_failed:
             match.delete()
