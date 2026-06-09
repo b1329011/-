@@ -190,7 +190,16 @@ function Profile() {
       {/* 導覽列 */}
       <nav className="navbar">
         <div className="navbar-logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/home')}>不揪ㄛ</div>
-        <div className="navbar-actions">
+        <div className="navbar-actions" style={{ display: 'flex', gap: '10px' }}>
+          {userInfo.role === 'admin' && (
+            <button 
+              className="btn-primary" 
+              style={{ backgroundColor: '#475569', border: 'none' }} 
+              onClick={() => navigate('/admin')}
+            >
+              管理者介面
+            </button>
+          )}
           <button className="btn-outline" onClick={() => navigate('/home')}>返回大廳</button>
         </div>
       </nav>
@@ -312,7 +321,7 @@ function Profile() {
                       style={{ width: '100%', marginTop: '10px', backgroundColor: '#475569', border: 'none' }} 
                       onClick={() => navigate('/admin')}
                     >
-                      切換為管理員
+                      進入管理者介面
                     </button>
                   )}
                 </>

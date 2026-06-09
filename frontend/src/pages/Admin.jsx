@@ -2,31 +2,23 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle } from 'lucide-react';
 import adminApi from '../api/admin';
+import venuesApi from '../api/venues';
+import gamesApi from '../api/games';
+import usersApi from '../api/users';
 import '../App.css';
 
 function Admin() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // 模擬場地資料庫
-  const [venues, setVenues] = useState([
-    { id: 1, name: '桃園國民運動中心', city: '桃園市', district: '桃園區', facilities: ['冷氣', '飲水機', '廁所', '淋浴間'] },
-    { id: 2, name: '桃園巨蛋室外籃球場', city: '桃園市', district: '桃園區', facilities: ['飲水機', '廁所'] },
-    { id: 3, name: '台大體育館', city: '台北市', district: '大安區', facilities: ['冷氣', '飲水機', '廁所'] },
-  ]);
+  // 場地狀態 (對接真實 API)
+  const [venues, setVenues] = useState([]);
 
-  // 模擬揪團房間資料 (用於 Demo 工具)
-  const [parties, setParties] = useState([
-    { id: 1, title: '今晚巨蛋鬥牛', status: '招募中', time: '今日 20:00', location: '桃園市桃園區 桃園巨蛋室外籃球場' },
-    { id: 2, title: '假日缺一咖打牌', status: '招募中', time: '本週六 14:00', location: '桃園市中壢區 中壢車站附近桌遊店' },
-    { id: 3, title: '下班輕鬆打羽球', status: '招募中', time: '明日 19:00', location: '桃園市桃園區 桃園國民運動中心' },
-  ]);
+  // 揪團房間狀態 (對接真實 API)
+  const [parties, setParties] = useState([]);
 
-  // 模擬公告資料
-  const [announcements, setAnnouncements] = useState([
-    { id: 1, title: '系統維護通知', content: '我們將於週日凌晨進行系統更新。', date: '2026-05-24' },
-    { id: 2, title: '新場地上線！', content: '現在可以選擇「台中洲際棒球場」進行揪團囉。', date: '2026-05-20' },
-  ]);
+  // 系統公告狀態 (對接真實 API)
+  const [announcements, setAnnouncements] = useState([]);
 
   // 真實 API 資料
   const [feedbacks, setFeedbacks] = useState([]);
@@ -42,16 +34,27 @@ function Admin() {
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
-        const [analyticsData, feedbacksData] = await Promise.all([
+        const [
+          analyticsData,
+          feedbacksData,
+          venuesData,
+          announcementsData,
+          gamesData,
+          usersData
+        ] = await Promise.all([
           adminApi.getAdminAnalytics(),
-          adminApi.getFeedbacks()
+          adminApi.getFeedbacks(),
+          venuesApi.getVenues(),
+          adminApi.getSystemAnnouncements(),
+          gamesApi.getGames(),
+          usersApi.getAllUsers()
         ]);
         
-        // 映射數據分析資料
+        // 1. 映射數據分析資料
         const mappedAnalytics = {
           active_users: analyticsData.active_users_today || 0,
           active_games: analyticsData.ongoing_games_count || 0,
-          system_messages: 0, // 後端未提供，預設為 0
+          system_messages: analyticsData.system_messages_count || 0,
           daily_activity: [],
           popular_sports: []
         };
@@ -79,6 +82,54 @@ function Admin() {
 
         setAnalytics(mappedAnalytics);
         setFeedbacks(feedbacksData || []);
+
+        // 2. 映射場地資料
+        const mappedVenues = (venuesData.results || venuesData || []).map(v => ({
+          id: v.id,
+          name: v.name,
+          city: v.address_detail?.city || '',
+          district: v.address_detail?.district || '',
+          facilities: v.facilities || []
+        }));
+        setVenues(mappedVenues);
+
+        // 3. 映射系統公告資料
+        const mappedAnnouncements = (announcementsData.results || announcementsData || []).map(a => ({
+          id: a.id,
+          title: a.title,
+          content: a.content,
+          date: a.created_at ? a.created_at.split('T')[0] : ''
+        }));
+        setAnnouncements(mappedAnnouncements);
+
+        // 4. 映射揪團房間資料 (用於 Demo 工具)
+        const statusMap = {
+          'recruiting': '招募中',
+          'full': '已額滿',
+          'closed': '已結束',
+          'started': '已開始',
+          'failed_to_start': '流局'
+        };
+        const mappedParties = (gamesData.results || gamesData || []).map(g => ({
+          id: g.id,
+          title: g.game_name || '未命名球局',
+          status: statusMap[g.match_status] || g.match_status || '招募中',
+          time: g.booking_date ? `${g.booking_date} ${g.time_slot || ''}` : '時間未定',
+          location: g.venue_name || '未指定地點'
+        }));
+        setParties(mappedParties);
+
+        // 5. 映射使用者資料
+        const mappedUsers = (usersData.results || usersData || []).map(u => ({
+          id: u.id,
+          name: u.name || u.email || `User #${u.id}`,
+          reputation: u.credit_point ?? 100,
+          email: u.email
+        }));
+        setUsers(mappedUsers);
+        if (mappedUsers.length > 0) {
+          setSelectedUser(mappedUsers[0]);
+        }
       } catch (error) {
         console.error('Admin data fetch error:', error);
       }
@@ -89,27 +140,41 @@ function Admin() {
   const [newVenue, setNewVenue] = useState({ name: '', city: '桃園市', district: '', facilities: '' });
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '' });
 
-  // 模擬使用者資料 (用於 Demo 工具)
-  const [users, setUsers] = useState([
-    { id: 1, name: '運動愛好者', reputation: 90 },
-    { id: 2, name: '小白', reputation: 65 },
-    { id: 3, name: '羽球控', reputation: 98 },
-    { id: 4, name: '阿傑', reputation: 45 },
-  ]);
-
-  const [selectedUser, setSelectedUser] = useState(users[0]);
+  // 使用者清單與選取狀態 (對接真實 API)
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState({ id: 0, name: '載入中...', reputation: 100 });
   const [weatherIndex, setWeatherIndex] = useState(80);
 
   // Demo 工具相關邏輯
-  const handleUpdateReputation = (score) => {
-    setUsers(users.map(u => u.id === selectedUser.id ? { ...u, reputation: score } : u));
-    setSelectedUser({ ...selectedUser, reputation: score });
-    alert(`玩家 ${selectedUser.name} 的信譽積分已調整為：${score}`);
+  const handleUpdateReputation = async (score) => {
+    if (!selectedUser?.id) return;
+    try {
+      await adminApi.updateUserReputation(selectedUser.id, score);
+      setUsers(users.map(u => u.id === selectedUser.id ? { ...u, reputation: score } : u));
+      setSelectedUser({ ...selectedUser, reputation: score });
+      alert(`玩家 ${selectedUser.name} 的信譽積分已調整為：${score}`);
+    } catch (error) {
+      console.error('Update user reputation error:', error);
+      alert('調整信譽積分失敗');
+    }
   };
 
-  const handleUpdatePartyStatus = (id, newStatus, newTime) => {
-    setParties(parties.map(p => p.id === id ? { ...p, status: newStatus, time: newTime || p.time } : p));
-    alert(`房間狀態已變更為：${newStatus}`);
+  const handleUpdatePartyStatus = async (id, newStatus, newTime) => {
+    const backendStatusMap = {
+      '即將開始': 'full',
+      '已開始': 'started',
+      '已結束': 'closed',
+      '招募中': 'recruiting'
+    };
+    const backendStatus = backendStatusMap[newStatus] || newStatus;
+    try {
+      await adminApi.updateDemoGameStatus(id, { status: backendStatus });
+      setParties(parties.map(p => p.id === id ? { ...p, status: newStatus, time: newTime || p.time } : p));
+      alert(`房間狀態已變更為：${newStatus}`);
+    } catch (error) {
+      console.error('Update game status error:', error);
+      alert('調整房間狀態失敗');
+    }
   };
 
   const getReputationStatus = (score) => {
@@ -119,22 +184,34 @@ function Admin() {
     return { label: '狀態良好', color: '#10b981' };
   };
 
-  const handleAddVenue = (e) => {
+  const handleAddVenue = async (e) => {
     e.preventDefault();
     if (!newVenue.name) return;
-    const venue = {
-      id: Date.now(),
-      name: newVenue.name,
-      city: newVenue.city,
-      district: newVenue.district,
-      facilities: newVenue.facilities.split(',').map(f => f.trim())
-    };
-    setVenues([...venues, venue]);
-    setNewVenue({ name: '', city: '桃園市', district: '', facilities: '' });
-    alert('場地已新增！');
+    const facilitiesList = newVenue.facilities.split(',').map(f => f.trim()).filter(Boolean);
+    try {
+      const created = await adminApi.createVenue({
+        name: newVenue.name,
+        city: newVenue.city,
+        district: newVenue.district,
+        facilities: facilitiesList
+      });
+      const mapped = {
+        id: created.id,
+        name: created.name,
+        city: created.address_detail?.city || newVenue.city,
+        district: created.address_detail?.district || newVenue.district,
+        facilities: created.facilities || facilitiesList
+      };
+      setVenues([...venues, mapped]);
+      setNewVenue({ name: '', city: '桃園市', district: '', facilities: '' });
+      alert('場地已新增！');
+    } catch (error) {
+      console.error('Create venue error:', error);
+      alert('新增場地失敗');
+    }
   };
 
-  const handleDeleteVenue = (id) => {
+  const handleDeleteVenue = async (id) => {
     const venueToDelete = venues.find(v => v.id === id);
     if (!venueToDelete) return;
 
@@ -148,8 +225,14 @@ function Admin() {
 
     if (window.confirm(`確定要刪除場地「${venueToDelete.name}」嗎？`)) {
       if (window.confirm('請再次確認，刪除後將無法復原！確定要刪除嗎？')) {
-        setVenues(venues.filter(v => v.id !== id));
-        alert('場地已成功刪除。');
+        try {
+          await adminApi.deleteVenue(id);
+          setVenues(venues.filter(v => v.id !== id));
+          alert('場地已成功刪除。');
+        } catch (error) {
+          console.error('Delete venue error:', error);
+          alert('刪除場地失敗');
+        }
       }
     }
   };
@@ -158,12 +241,12 @@ function Admin() {
     e.preventDefault();
     if (!newAnnouncement.title) return;
     try {
-      await adminApi.createSystemAnnouncement(newAnnouncement);
+      const created = await adminApi.createSystemAnnouncement(newAnnouncement);
       const announcement = {
-        id: Date.now(),
-        title: newAnnouncement.title,
-        content: newAnnouncement.content,
-        date: new Date().toISOString().split('T')[0]
+        id: created.id || Date.now(),
+        title: created.title,
+        content: created.content,
+        date: created.created_at ? created.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
       };
       setAnnouncements([announcement, ...announcements]);
       setNewAnnouncement({ title: '', content: '' });
@@ -174,9 +257,16 @@ function Admin() {
     }
   };
 
-  const handleDeleteAnnouncement = (id) => {
+  const handleDeleteAnnouncement = async (id) => {
     if (window.confirm('確定要刪除此公告嗎？')) {
-      setAnnouncements(announcements.filter(a => a.id !== id));
+      try {
+        await adminApi.deleteSystemAnnouncement(id);
+        setAnnouncements(announcements.filter(a => a.id !== id));
+        alert('公告已成功刪除。');
+      } catch (error) {
+        console.error('Delete announcement error:', error);
+        alert('刪除公告失敗');
+      }
     }
   };
 
@@ -454,9 +544,12 @@ function Admin() {
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '12px', alignItems: 'center' }}>
                     <button style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700' }} onClick={async () => {
+                      const replyText = window.prompt("請輸入給使用者的回覆內容 (留空將使用預設回覆)：");
+                      if (replyText === null) return; // 取消則不處理
                       try {
-                        await adminApi.handleFeedback(f.id, { is_handled: true });
-                        setFeedbacks(feedbacks.map(fb => fb.id === f.id ? { ...fb, is_handled: true } : fb));
+                        await adminApi.handleFeedback(f.id, { is_handled: true, admin_reply: replyText });
+                        setFeedbacks(feedbacks.map(fb => fb.id === f.id ? { ...fb, is_handled: true, admin_reply: replyText } : fb));
+                        alert('已標記完成並發送通知！');
                       } catch (error) {
                         alert('標記失敗');
                       }
@@ -579,6 +672,22 @@ function Admin() {
                       max="100" 
                       value={weatherIndex} 
                       onChange={(e) => setWeatherIndex(parseInt(e.target.value, 10))}
+                      onMouseUp={async (e) => {
+                        const val = parseInt(e.target.value, 10);
+                        try {
+                          await adminApi.updateDemoWeather({ value: val });
+                        } catch (error) {
+                          console.error('Update weather error:', error);
+                        }
+                      }}
+                      onTouchEnd={async (e) => {
+                        const val = parseInt(e.target.value, 10);
+                        try {
+                          await adminApi.updateDemoWeather({ value: val });
+                        } catch (error) {
+                          console.error('Update weather error:', error);
+                        }
+                      }}
                       style={{ width: '100%', cursor: 'pointer', accentColor: '#7995a5' }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
@@ -586,20 +695,28 @@ function Admin() {
                       <span>100% (晴朗舒適)</span>
                     </div>
                   </div>
-                  <button className="btn-outline" style={{ width: '100%' }} onClick={() => {
-                    setUsers(users.map(u => ({ ...u, reputation: 90 })));
-                    setSelectedUser({ ...selectedUser, reputation: 90 });
-                    setWeatherIndex(80);
-                    alert('系統已重置為初始狀態');
+                  <button className="btn-outline" style={{ width: '100%' }} onClick={async () => {
+                    try {
+                      await Promise.all([
+                        adminApi.updateDemoWeather({ value: 80 }),
+                        selectedUser?.id ? adminApi.updateUserReputation(selectedUser.id, 90) : Promise.resolve()
+                      ]);
+                      setUsers(users.map(u => u.id === selectedUser.id ? { ...u, reputation: 90 } : u));
+                      setSelectedUser(prev => prev ? { ...prev, reputation: 90 } : prev);
+                      setWeatherIndex(80);
+                      alert('系統已重置為初始狀態');
+                    } catch (error) {
+                      console.error('Reset error:', error);
+                      alert('重置失敗');
+                    }
                   }}>
                     <RefreshCcw size={16} /> 重置所有 Demo 數據
                   </button>
-                </div>
-
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
       </main>
     </div>
   );

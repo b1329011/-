@@ -208,11 +208,6 @@ function PartyDetail() {
 	const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
 	const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
 
-	// 新增：場地異常回報狀態
-	const [showVenueIssueModal, setShowVenueIssueModal] = useState(false);
-	const [venueIssueType, setVenueIssueType] = useState("場地損壞");
-	const [venueIssueDesc, setVenueIssueDesc] = useState("");
-
 	// 當打開名單 Modal 時，向後端索取真實資料
 	useEffect(() => {
 		if (showListModal) {
@@ -469,42 +464,6 @@ function PartyDetail() {
 
 	const isFull = party.currentPlayers >= party.maxPlayers;
 	const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
-
-	const handleVenueIssue = async () => {
-		try {
-			// 假設後端 API 需要 venue_id 和 court_id
-			// 如果 party 物件中沒有，我們可能需要先從後端獲取詳細資料
-			if (!party.venue_id || !party.court_id) {
-				// 如果缺少 ID，可以嘗試從 getGameById 獲取完整的 freshData
-				const freshData = await gamesApi.getGameById(party.id);
-				if (freshData.venue_id && freshData.court_id) {
-					await venuesApi.reportCourtStatus(
-						freshData.venue_id,
-						freshData.court_id,
-						{
-							issue_type: venueIssueType,
-							description: venueIssueDesc,
-						},
-					);
-				} else {
-					// 容錯處理：如果還是拿不到，彈出提示
-					alert("無法獲取場地 ID，請稍後再試。");
-					return;
-				}
-			} else {
-				await venuesApi.reportCourtStatus(party.venue_id, party.court_id, {
-					issue_type: venueIssueType,
-					description: venueIssueDesc,
-				});
-			}
-			showToast("場地異常已回報，感謝您的協助！");
-			setShowVenueIssueModal(false);
-			setVenueIssueDesc("");
-		} catch (error) {
-			console.error("Report venue issue error:", error);
-			alert("回報失敗，請確認網路連線。");
-		}
-	};
 
 	return (
 		<div className="home-container">
@@ -827,22 +786,6 @@ function PartyDetail() {
 										{party.location}
 									</span>
 								</div>
-								<button
-									onClick={() => setShowVenueIssueModal(true)}
-									style={{
-										background: "none",
-										border: "none",
-										cursor: "pointer",
-										color: "#7995a5",
-										display: "flex",
-										alignItems: "center",
-										gap: "4px",
-										fontSize: "12px",
-										fontWeight: "700",
-									}}
-								>
-									<AlertTriangle size={14} /> 回報異常
-								</button>
 							</div>
 
 							<div
@@ -1720,100 +1663,6 @@ function PartyDetail() {
 								</button>
 							</div>
 						)}
-					</div>
-				</div>
-			)}
-
-			{/* 場地異常回報 Modal */}
-			{showVenueIssueModal && (
-				<div
-					className="modal-overlay"
-					onClick={() => setShowVenueIssueModal(false)}
-					style={{ zIndex: 1200 }}
-				>
-					<div
-						className="modal-content"
-						onClick={(e) => e.stopPropagation()}
-						style={{ maxWidth: "400px" }}
-					>
-						<div className="modal-header">
-							<h3
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									color: "#7995a5",
-								}}
-							>
-								<AlertTriangle size={20} /> 回報場地異常
-							</h3>
-							<button
-								className="modal-close"
-								onClick={() => setShowVenueIssueModal(false)}
-							>
-								&times;
-							</button>
-						</div>
-						<div style={{ marginBottom: "20px" }}>
-							<p
-								style={{
-									fontSize: "13px",
-									color: "#64748b",
-									marginBottom: "16px",
-								}}
-							>
-								如果您發現場地有損壞、設備不全或其他現場問題，請告知我們。
-							</p>
-
-							<div className="form-group">
-								<label className="form-label">異常類型</label>
-								<select
-									className="form-input"
-									value={venueIssueType}
-									onChange={(e) => setVenueIssueType(e.target.value)}
-								>
-									<option value="場地損壞">
-										場地損壞 (如：地板破洞、網架斷裂)
-									</option>
-									<option value="設備缺失">
-										設備缺失 (如：無飲水機、廁所故障)
-									</option>
-									<option value="場地被占用">場地被占用</option>
-									<option value="環境髒亂">環境髒亂</option>
-									<option value="燈光故障">燈光故障</option>
-									<option value="其他問題">其他</option>
-								</select>
-							</div>
-
-							<div className="form-group">
-								<label className="form-label">詳細說明</label>
-								<textarea
-									className="form-input"
-									rows="3"
-									placeholder="請具體描述遇到的狀況..."
-									value={venueIssueDesc}
-									onChange={(e) => setVenueIssueDesc(e.target.value)}
-									required
-								></textarea>
-							</div>
-						</div>
-
-						<div style={{ display: "flex", gap: "12px" }}>
-							<button
-								className="btn-outline"
-								style={{ flex: 1 }}
-								onClick={() => setShowVenueIssueModal(false)}
-							>
-								取消
-							</button>
-							<button
-								className="login-button"
-								style={{ flex: 1, backgroundColor: "#7995a5" }}
-								onClick={handleVenueIssue}
-							>
-								送出回報
-							</button>
-						</div>
 					</div>
 				</div>
 			)}

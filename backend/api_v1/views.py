@@ -14,7 +14,7 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist,
-    Notification, GameBulletin
+    Notification, GameBulletin, Feedback, Announcement, Facility
 )
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
@@ -22,7 +22,8 @@ from .serializers import (
     GameMatchListSerializer, MatchParticipantUserSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
-    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
+    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
+    FeedbackSerializer, AnnouncementSerializer
 )
 
 User = get_user_model()
@@ -291,6 +292,19 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer = UserSportLevelSerializer(level_obj)
             return Response(serializer.data)
 
+    @action(detail=True, methods=['patch'], url_path='reputation', permission_classes=[IsAdminRole])
+    def update_reputation(self, request, pk=None):
+        user = self.get_object()
+        score = request.data.get('credit_point')
+        if score is not None:
+            try:
+                user.credit_point = int(score)
+                user.save()
+                return Response({"detail": f"User credit points updated to {user.credit_point}."})
+            except ValueError:
+                return Response({"detail": "Invalid credit point value."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "credit_point is required."}, status=status.HTTP_400_BAD_REQUEST)
+
     # @action(detail=False, methods=['get', 'post'], url_path='availability')
     # def availability(self, request):
     #     availability_obj = UserAvailability.objects.filter(user=request.user).first()
@@ -335,6 +349,38 @@ class VenueViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve', 'regions']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+    def create(self, request, *args, **kwargs):
+        name = request.data.get('name')
+        city = request.data.get('city')
+        district = request.data.get('district')
+        street_line = request.data.get('street_line', '未指定路段')
+        facilities_list = request.data.get('facilities', [])
+        
+        # 1. Create or get Address
+        address, _ = Address.objects.get_or_create(
+            city=city,
+            district=district,
+            street_line=street_line
+        )
+        
+        # 2. Create Venue
+        venue = Venue.objects.create(
+            name=name,
+            address=address,
+            types='indoor'
+        )
+        
+        # 3. Handle Facilities
+        if isinstance(facilities_list, str):
+            facilities_list = [f.strip() for f in facilities_list.split(',') if f.strip()]
+        
+        for f_name in facilities_list:
+            facility, _ = Facility.objects.get_or_create(name=f_name)
+            venue.facilities.add(facility)
+            
+        serializer = self.get_serializer(venue)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='regions')
     def regions(self, request):
@@ -434,33 +480,6 @@ class CourtViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
-
-    @action(detail=True, methods=['post'], url_path='report-status')
-    def report_status(self, request, pk=None, venue_id=None):
-        court = get_object_or_404(Court, pk=pk, venue_id=venue_id)
-        issue_type = request.data.get('issue_type')
-        description = request.data.get('description', '')
-
-        if not issue_type:
-            return Response({"detail": "issue_type is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        court.occupied = True
-        court.save()
-
-        today = timezone.now().date()
-        affected_games = GameMatch.objects.filter(court=court, booking_date=today)
-        
-        for game in affected_games:
-            Notification.objects.create(
-                user=game.creator,
-                match=game,
-                message=f"場地異常警告通知 ⚠️：您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
-            )
-
-        return Response({
-            "status": "success",
-            "message": "感謝您的回報！系統已建立場地修繕案並通知管理員，同時將警告推播給今日預計使用此場地的球友房主。"
-        }, status=status.HTTP_200_OK)
 
 def get_match_start_datetime(match):
     """
@@ -1475,10 +1494,24 @@ class AdminGameViewSet(viewsets.ModelViewSet):
     def change_status(self, request, pk=None):
         match = self.get_object()
         status_val = request.data.get('status')
+        booking_date = request.data.get('booking_date')
+        time_slot = request.data.get('time_slot')
+
+        updated_fields = []
         if status_val:
             match.match_status = status_val
+            updated_fields.append("status")
+        if booking_date:
+            match.booking_date = booking_date
+            updated_fields.append("booking_date")
+        if time_slot:
+            match.time_slot = time_slot
+            updated_fields.append("time_slot")
+
+        if updated_fields:
             match.save()
-        return Response({"detail": f"Status updated to {match.match_status}"})
+            return Response({"detail": f"Game match {', '.join(updated_fields)} updated successfully."})
+        return Response({"detail": "No fields to update."}, status=status.HTTP_400_BAD_REQUEST)
 
 class AdminBroadcastViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
@@ -1518,9 +1551,9 @@ class NotificationViewSet(viewsets.ViewSet):
         match_ids = set(list(user_matches) + list(fav_venue_matches))
         
         notifs = Notification.objects.filter(
-            match_id__in=match_ids
+            Q(match_id__in=match_ids) | Q(match__isnull=True)
         ).filter(
-            Q(user=request.user) | Q(user__isnull=True)
+            Q(user=request.user) | (Q(user__isnull=True) & Q(match_id__in=match_ids))
         ).order_by('-created_at')
         serializer = NotificationSerializer(notifs, many=True)
         return Response(serializer.data)
@@ -1670,28 +1703,55 @@ class OpenDataViewSet(viewsets.ViewSet):
             "aqi": aqi
         }, status=status.HTTP_200_OK)
 
-# 
-# class AnnouncementViewSet(viewsets.ModelViewSet):
-#     queryset = Announcement.objects.all().order_by('-created_at')
-#     serializer_class = AnnouncementSerializer
-# 
-#     def get_permissions(self):
-#         if self.action in ['list', 'retrieve']:
-#             return [permissions.AllowAny()]
-#         return [IsAdminRole()]
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all().order_by('-created_at')
+    serializer_class = AnnouncementSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        announcement = serializer.save()
+        # 當發布系統公告時，自動為所有使用者建立一則通知
+        users = User.objects.all()
+        notifications = [
+            Notification(
+                user=user, 
+                message=f"【系統公告】{announcement.title}\n{announcement.content}"
+            )
+            for user in users
+        ]
+        Notification.objects.bulk_create(notifications)
 
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
         today = timezone.now().date()
-        # is_active is a virtual property, count all users
-        active_users = User.objects.count()
+        
+        # Today's active users: users who are participants in a match today or created a match today
+        active_users = User.objects.filter(
+            models.Q(created_matches__booking_date=today) | 
+            models.Q(matchparticipant__match__booking_date=today)
+        ).distinct().count()
+        
+        # If no one is active today, show total users as a fallback or just show 0
+        # The user might prefer seeing total users if "active" is too strict
+        total_users = User.objects.count()
+        
         ongoing_games = GameMatch.objects.filter(booking_date=today).count()
         
         sports_ratio = {}
         for s in Sport.objects.all():
-            sports_ratio[s.name] = GameMatch.objects.filter(sport=s).count()
+            # Calculate popularity based on number of participants in matches of this sport
+            count = MatchParticipant.objects.filter(match__sport=s).count()
+            # If no participants, maybe count matches instead
+            if count == 0:
+                count = GameMatch.objects.filter(sport=s).count()
+            
+            sports_ratio[s.chinese_name] = count
         
         activity_trend = [
             {"date": str(today - timezone.timedelta(days=i)), 
@@ -1699,11 +1759,16 @@ class AdminAnalyticsView(APIView):
             for i in range(7)
         ]
         
+        # Count system notifications
+        system_messages_count = Notification.objects.count()
+        
         return Response({
-            "active_users_today": active_users,
+            "active_users_today": total_users, # Keep as total_users for now as per original intent but could be active_users
+            "active_users_real": active_users,
             "ongoing_games_count": ongoing_games,
             "sports_ratio": sports_ratio,
-            "activity_trend": activity_trend
+            "activity_trend": activity_trend,
+            "system_messages_count": system_messages_count
         }, status=status.HTTP_200_OK)
 
 class DemoWeatherView(APIView):
@@ -1713,3 +1778,45 @@ class DemoWeatherView(APIView):
         value = request.data.get('value', 50)
         # WeatherData is commented out
         return Response({"detail": f"Demo weather suitability updated to {value}% (Mocked)"}, status=status.HTTP_200_OK)
+
+class FeedbackViewSet(viewsets.ModelViewSet):
+    queryset = Feedback.objects.all().order_by('-created_at')
+    serializer_class = FeedbackSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'handle', 'destroy']:
+            return [IsAdminRole()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        queryset = Feedback.objects.all().order_by('-created_at')
+        is_handled = self.request.query_params.get('is_handled')
+        if is_handled is not None:
+            val = is_handled.lower() == 'true'
+            queryset = queryset.filter(is_handled=val)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['put'], url_path='handle')
+    def handle(self, request, pk=None):
+        feedback = self.get_object()
+        admin_reply = request.data.get('admin_reply', '')
+        
+        feedback.is_handled = True
+        if admin_reply:
+            feedback.admin_reply = admin_reply
+        feedback.save()
+
+        # Send notification to user
+        if feedback.user:
+            # Format message so frontend can parse it
+            msg_reply = admin_reply or "您的建議已收到，感謝您的支持！"
+            message_content = f"【回饋處理通知】\n[Feedback]\n{feedback.content}\n[Reply]\n{msg_reply}"
+            Notification.objects.create(
+                user=feedback.user,
+                message=message_content
+            )
+
+        return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
