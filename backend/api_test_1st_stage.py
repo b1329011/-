@@ -750,6 +750,26 @@ def run_tests():
     )
     MatchParticipant.objects.create(match=match_24h, user=user_a)
 
+    # 1.2 建立 30 分鐘內即將開始的球局 (預計觸發 30m 通知)
+    start_30m = now + datetime.timedelta(minutes=15)
+    end_30m = now + datetime.timedelta(hours=2)
+    time_slot_30m = f"{start_30m.strftime('%H:%M')}-{end_30m.strftime('%H:%M')}"
+    
+    match_30m = GameMatch.objects.create(
+        game_name="30m內緊急球局",
+        creator=user_a,
+        sport=badminton,
+        court=court,
+        least_players=1,
+        most_players=4,
+        target_level="休閒",
+        booking_date=start_30m.date(),
+        time_slot=time_slot_30m,
+        total_price=500.0,
+        cancel_deadline=start_30m - datetime.timedelta(hours=24)
+    )
+    MatchParticipant.objects.create(match=match_30m, user=user_a)
+
     # 2. 建立已開始但尚未結束且人數足夠的球局 (預計觸發 開始通知)
     start_started = now - datetime.timedelta(hours=1)
     end_started = now + datetime.timedelta(hours=1)
@@ -811,6 +831,7 @@ def run_tests():
     
     # 重新載入球局狀態
     match_24h.refresh_from_db()
+    match_30m.refresh_from_db()
     match_started.refresh_from_db()
     match_ended.refresh_from_db()
     
@@ -818,6 +839,7 @@ def run_tests():
     match_failed_exists = GameMatch.objects.filter(id=match_failed_id).exists()
 
     print_log(f"   24h球局狀態 (預期 recruiting/full): {match_24h.match_status}")
+    print_log(f"   30m球局狀態 (預期 recruiting/full): {match_30m.match_status}")
     print_log(f"   已開始成團球局狀態 (預期 started): {match_started.match_status}")
     print_log(f"   人數不足流局球局 (預期已刪除): {'存在' if match_failed_exists else '已物理刪除'}")
     print_log(f"   已結束自動關閉球局狀態 (預期 closed): {match_ended.match_status}")
@@ -830,17 +852,19 @@ def run_tests():
 
     # 驗證通知發送 (對已刪除球局，我們不帶 match 條件查，改查 message)
     notif_24h = Notification.objects.filter(user=user_a, match=match_24h, message__contains="將在 24 小時內開始").exists()
+    notif_30m = Notification.objects.filter(user=user_a, match=match_30m, message__contains="將在 30 分鐘內開始").exists()
     notif_started = Notification.objects.filter(user=user_a, match=match_started, message__contains="已經開始").exists()
     # match_failed 已刪除，故 match 外鍵應為 None (SET_NULL)
     notif_failed = Notification.objects.filter(user=user_a, match__isnull=True, message__contains="因人數未達下限").exists()
     notif_ended = Notification.objects.filter(user=user_a, match=match_ended, message__contains="已順利結束").exists()
 
     print_log(f"   24h球局通知發送情況 (預期 True): {notif_24h}")
+    print_log(f"   30m球局通知發送情況 (預期 True): {notif_30m}")
     print_log(f"   已開始成團球局通知發送情況 (預期 True): {notif_started}")
     print_log(f"   人數不足流局通知發送情況 (預期 True): {notif_failed}")
     print_log(f"   已結束球局通知發送情況 (預期 True): {notif_ended}")
 
-    if notif_24h and notif_started and notif_failed and notif_ended:
+    if notif_24h and notif_30m and notif_started and notif_failed and notif_ended:
         print_log("✅ 成功：球局狀態機通知發送全部正確！")
     else:
         print_log("❌ 錯誤：球局狀態機通知發送不正確！")
