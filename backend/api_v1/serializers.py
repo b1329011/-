@@ -130,6 +130,128 @@ class GameMatchListSerializer(serializers.ModelSerializer):
         waitlisted_parts = all_parts[obj.most_players:]
         return [p.user.id for p in waitlisted_parts]
 
+def validate_venue_hours(venue, booking_date, time_slot):
+    import re
+    if not venue or not venue.opening_hours:
+        return True, ""
+
+    parts = time_slot.split('-')
+    if len(parts) < 2:
+        return True, ""
+        
+    start_time_str, end_time_str = parts[0].strip(), parts[1].strip()
+    
+    def parse_time_to_min(t_str):
+        t_str = t_str.replace('：', ':').strip()
+        t_parts = re.split(r'[:]', t_str)
+        if len(t_parts) >= 2:
+            return int(t_parts[0]) * 60 + int(t_parts[1])
+        elif len(t_parts) == 1 and len(t_parts[0]) == 4:
+            return int(t_parts[0][:2]) * 60 + int(t_parts[0][2:])
+        return 0
+
+    t_min = parse_time_to_min(start_time_str)
+    end_min = parse_time_to_min(end_time_str)
+    if end_min <= t_min:
+        end_min += 1440
+        
+    is_weekend = booking_date.weekday() >= 5
+    day_name = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][booking_date.weekday()]
+    
+    opening_hours = venue.opening_hours
+
+    # Format 1: weekdays/weekends
+    if 'weekdays' in opening_hours or 'weekends' in opening_hours:
+        range_str = opening_hours.get('weekends') if is_weekend else opening_hours.get('weekdays')
+        if not range_str:
+            return True, ""
+        
+        m = re.findall(r'(\d{1,2}[:：]\d{2})', range_str)
+        if len(m) >= 2:
+            r_start = parse_time_to_min(m[0])
+            r_end = parse_time_to_min(m[1])
+            if r_end <= r_start:
+                r_end += 1440
+            if r_end - r_start >= 1440:
+                return True, ""
+            if r_start <= t_min and end_min <= r_end:
+                return True, ""
+            else:
+                return False, f"超出該場地當天營業時間 ({range_str})"
+        return True, ""
+
+    # Format 2: opening list
+    opening = opening_hours.get('opening')
+    if not opening or not isinstance(opening, list):
+        return True, ""
+        
+    day_specific_entries = [e for e in opening if e.get('days') and e.get('days') != '全年24小時']
+    if day_specific_entries:
+        matching_entries = [e for e in day_specific_entries if day_name in e.get('days')]
+        if not matching_entries:
+            return False, f"該場地於 {day_name} 不開放營業"
+    else:
+        matching_entries = opening
+
+    for entry in matching_entries:
+        time_text = entry.get('time')
+        if not time_text or time_text in ['無', '全年24小時']:
+            continue
+            
+        if '不對外開放' in time_text or '不開放' in time_text or '無法開放' in time_text:
+            m = re.findall(r'(\d{1,2}[:：]?\d{2}?)\s*[-~～至]\s*(\d{1,2}[:：]\d{2})', time_text)
+            closed_ranges = []
+            for r in m:
+                closed_ranges.append((parse_time_to_min(r[0]), parse_time_to_min(r[1])))
+                
+            if not closed_ranges and not is_weekend:
+                closed_ranges.append((8 * 60, 17 * 60))
+            
+            if closed_ranges:
+                for r_start, r_end in closed_ranges:
+                    if r_end <= r_start:
+                        r_end += 1440
+                    if t_min < r_end and r_start < end_min:
+                        return False, f"此時段為該場地非開放時間：{time_text}"
+                        
+        elif '開放時間' in time_text or '開放' in time_text or '時段' in time_text:
+            weekday_part = ""
+            weekend_part = ""
+            if '週六週日' in time_text or '假日' in time_text or '例假日' in time_text:
+                parts = re.split(r'[，,；;。]', time_text)
+                for p in parts:
+                    if any(k in p for k in ['週六週日', '假日', '例假日', '週六', '週日']):
+                        weekend_part += " " + p
+                    else:
+                        weekday_part += " " + p
+            else:
+                weekday_part = time_text
+                
+            active_part = weekend_part if is_weekend else weekday_part
+            if not active_part.strip():
+                active_part = time_text
+                
+            m = re.findall(r'(\d{1,2}[:：]?\d{2}?)\s*[-~～至]\s*(\d{1,2}[:：]\d{2})', active_part)
+            open_ranges = []
+            for r in m:
+                open_ranges.append((parse_time_to_min(r[0]), parse_time_to_min(r[1])))
+                
+            if open_ranges:
+                matched = False
+                for r_start, r_end in open_ranges:
+                    if r_end <= r_start:
+                        r_end += 1440
+                    if r_end - r_start >= 1440:
+                        matched = True
+                        break
+                    if r_start <= t_min and end_min <= r_end:
+                        matched = True
+                        break
+                if not matched:
+                    return False, f"此時段超出該場地開放時間：{time_text}"
+            
+    return True, ""
+
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
     court_id = serializers.PrimaryKeyRelatedField(queryset=Court.objects.all(), source='court', required=False, allow_null=True)
@@ -338,6 +460,30 @@ class GameMatchSerializer(serializers.ModelSerializer):
             else:
                 from django.utils import timezone
                 attrs['cancel_deadline'] = timezone.now()
+
+        # 3. 驗證場地營業時間
+        val_date = booking_date or (self.instance.booking_date if self.instance else None)
+        val_time_slot = attrs.get('time_slot') or (self.instance.time_slot if self.instance else None)
+        if val_date and val_time_slot:
+            request = self.context.get('request')
+            venue = None
+            if request:
+                venue_id = request.data.get('venue_id')
+                court_id = request.data.get('court_id')
+                if court_id:
+                    court = Court.objects.filter(id=court_id).first()
+                    if court:
+                        venue = court.venue
+                elif venue_id:
+                    venue = Venue.objects.filter(id=venue_id).first()
+            
+            if not venue and self.instance and self.instance.court:
+                venue = self.instance.court.venue
+
+            if venue:
+                is_open, err_msg = validate_venue_hours(venue, val_date, val_time_slot)
+                if not is_open:
+                    raise serializers.ValidationError({"time_slot": err_msg})
 
         attrs.pop('start_time', None)
         attrs.pop('duration', None)

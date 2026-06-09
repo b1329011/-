@@ -625,15 +625,62 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='history')
     def history(self, request):
+        # 確保狀態機是最新的
+        update_all_match_statuses()
+        
         user = request.user
+        now = timezone.now()
+        
+        # 篩選已參加且標記為 closed 的球局
         queryset = GameMatch.objects.filter(
             participants__user=user,
             match_status='closed'
         ).select_related(
             'sport', 'court__venue__address', 'creator'
+        ).prefetch_related(
+            'participants__user'
         ).distinct().order_by('-booking_date', '-time_slot')
         
-        serializer = GameMatchListSerializer(queryset, many=True)
+        valid_matches = []
+        for match in queryset:
+            # 額外校驗：確保人數達標且時間確實已結束
+            if match.current_players_count >= match.least_players:
+                if get_match_end_datetime(match) <= now:
+                    valid_matches.append(match)
+                
+        lat = request.query_params.get('lat')
+        lng = request.query_params.get('lng')
+        radius = request.query_params.get('radius') # in km
+
+        matches_list = []
+        for match in valid_matches:
+            # 1. Weather calculation
+            city = match.court.venue.address.city if match.court and match.court.venue and match.court.venue.address else None
+            district = match.court.venue.address.district if match.court and match.court.venue and match.court.venue.address else None
+            
+            rain_prob = 0.2
+            aqi = 50
+            weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
+            match.weather = round(weather_idx, 1)
+            
+            # 2. Distance calculation
+            dist = None
+            if lat is not None and lng is not None:
+                venue_lat = match.court.venue.latitude if match.court and match.court.venue else None
+                venue_lng = match.court.venue.longitude if match.court and match.court.venue else None
+                if venue_lat is not None and venue_lng is not None:
+                    dist = haversine_distance(float(lat), float(lng), float(venue_lat), float(venue_lng))
+            
+            match.distance_km = dist
+            
+            # Apply radius filter
+            if radius is not None and dist is not None:
+                if dist > float(radius):
+                    continue
+            
+            matches_list.append(match)
+
+        serializer = GameMatchListSerializer(matches_list, many=True)
         return Response(serializer.data)
 
     def get_permissions(self):

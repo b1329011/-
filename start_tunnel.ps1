@@ -1,6 +1,6 @@
 
 # 1. Setup Ports
-$BACKEND_PORT = 8088
+$BACKEND_PORT = 8000
 $FRONTEND_PORT = 5173
 
 # 2. Cleanup old logs
