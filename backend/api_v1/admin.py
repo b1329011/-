@@ -3,8 +3,20 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
     CourtConflict, GameMatch, MatchParticipant,
     FavoriteGame, PenaltyRule, Report, Blacklist,
-    Notification
+    Notification, Feedback, Announcement
 )
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'type', 'is_handled', 'created_at')
+    list_filter = ('type', 'is_handled', 'created_at')
+    search_fields = ('content',)
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'title', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('title', 'content')
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -61,18 +73,9 @@ class MatchParticipantAdmin(admin.ModelAdmin):
     list_display = ('match', 'user', 'joined_at')
     list_filter = ('joined_at',)
 
-# @admin.register(MatchWaitlist)
-# class MatchWaitlistAdmin(admin.ModelAdmin):
-#     list_display = ('match', 'user', 'queue_position', 'status', 'joined_at')
-#     list_filter = ('status', 'joined_at')
-
 @admin.register(FavoriteGame)
 class FavoriteGameAdmin(admin.ModelAdmin):
     list_display = ('user', 'match')
-
-# @admin.register(FavoriteVenue)
-# class FavoriteVenueAdmin(admin.ModelAdmin):
-#     list_display = ('user', 'venue', 'created_at')
 
 @admin.register(PenaltyRule)
 class PenaltyRuleAdmin(admin.ModelAdmin):
@@ -89,20 +92,7 @@ class BlacklistAdmin(admin.ModelAdmin):
     list_display = ('user', 'added_at', 'removed_at')
     search_fields = ('user__name', 'user__phone')
 
-# @admin.register(UserAvailability)
-# class UserAvailabilityAdmin(admin.ModelAdmin):
-#     list_display = ('user', 'preferred_city', 'preferred_district', 'search_radius_km')
-
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('match', 'message', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
-
-# @admin.register(WeatherData)
-# class WeatherDataAdmin(admin.ModelAdmin):
-#     list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
-#     list_filter = ('city',)
-# @admin.register(Announcement)
-# class AnnouncementAdmin(admin.ModelAdmin):
-#     list_display = ('title', 'created_at')
-#     list_filter = ('created_at',)

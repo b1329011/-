@@ -4,7 +4,8 @@ from .views import (
     AuthLoginView, AuthRegisterView, UserViewSet, SportViewSet, VenueViewSet, CourtViewSet,
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
-    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, AnnouncementViewSet
+    AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, AnnouncementViewSet,
+    upload_image
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -43,4 +44,5 @@ urlpatterns = [
     re_path(r'^admin/analytics/?$', AdminAnalyticsView.as_view(), name='admin-analytics'),
     re_path(r'^admin/demo/games/(?P<pk>\d+)/status/?$', AdminGameViewSet.as_view({'patch': 'change_status'}), name='admin-demo-game-status'),
     re_path(r'^admin/demo/weather/?$', DemoWeatherView.as_view(), name='admin-demo-weather'),
+    re_path(r'^upload/?$', upload_image, name='upload-image'),
 ]

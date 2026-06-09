@@ -435,34 +435,22 @@ class FeedbackSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Feedback
-        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'created_at', 'admin_reply')
+        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'admin_reply', 'created_at')
         read_only_fields = ('id', 'user', 'created_at')
 
 class AnnouncementSerializer(serializers.ModelSerializer):
-    photo = serializers.SerializerMethodField()
-
     class Meta:
         model = Announcement
-        fields = ('id', 'title', 'content', 'created_at', 'photo')
+        fields = '__all__'
 
-    def get_photo(self, obj):
-        if not obj.photo:
+    def validate_photo(self, value):
+        if value is None:
             return []
-        import json
-        try:
-            return json.loads(obj.photo)
-        except Exception:
-            if ',' in obj.photo:
-                return [p.strip() for p in obj.photo.split(',')]
-            return [obj.photo]
-
-    def to_internal_value(self, data):
-        internal_data = super().to_internal_value(data)
-        photo_data = data.get('photo')
-        if photo_data is not None:
-            import json
-            if isinstance(photo_data, list):
-                internal_data['photo'] = json.dumps(photo_data)
-            else:
-                internal_data['photo'] = json.dumps([photo_data])
-        return internal_data
+        if not isinstance(value, list):
+            raise serializers.ValidationError("公告圖片格式必須為列表（Array）。")
+        if len(value) > 3:
+            raise serializers.ValidationError("公告圖片數量上限為 3 張。")
+        for url in value:
+            if not isinstance(url, str):
+                raise serializers.ValidationError("公告圖片的 URL 必須是字串（String）。")
+        return value

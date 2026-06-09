@@ -4,8 +4,8 @@ from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from rest_framework import viewsets, status, permissions, mixins
-from rest_framework.decorators import action
+from rest_framework import viewsets, status, permissions, mixins, filters
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
@@ -1706,6 +1706,8 @@ class OpenDataViewSet(viewsets.ViewSet):
 class AnnouncementViewSet(viewsets.ModelViewSet):
     queryset = Announcement.objects.all().order_by('-created_at')
     serializer_class = AnnouncementSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['title', 'content']
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -1820,3 +1822,27 @@ class FeedbackViewSet(viewsets.ModelViewSet):
             )
 
         return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
+
+
+import os
+import uuid
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def upload_image(request):
+    if 'file' not in request.FILES:
+        return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    uploaded_file = request.FILES['file']
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+        return Response({"error": "Invalid file type. Only PNG, JPG, JPEG, GIF, and WEBP are allowed."}, status=status.HTTP_400_BAD_REQUEST)
+        
+    filename = f"uploads/{uuid.uuid4()}{ext}"
+    path = default_storage.save(filename, ContentFile(uploaded_file.read()))
+    file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
+    
+    return Response({"url": file_url}, status=status.HTTP_201_CREATED)
