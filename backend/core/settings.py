@@ -89,12 +89,15 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
     # 1. Check if MySQL driver is installed
     mysql_driver_installed = False
     try:
-        import pymysql
-        pymysql.install_as_MySQLdb()
+        # 優先嘗試使用真正的 mysqlclient
+        import MySQLdb
         mysql_driver_installed = True
     except ImportError:
         try:
-            import MySQLdb
+            # 如果沒有 mysqlclient，嘗試使用 pymysql 並偽裝成 MySQLdb
+            import pymysql
+            pymysql.version_info = (2, 2, 8, 'final', 0) # 欺騙 Django 的版本檢查
+            pymysql.install_as_MySQLdb()
             mysql_driver_installed = True
         except ImportError:
             pass

@@ -2,11 +2,11 @@ import axios from "axios";
 
 // 建立 Axios 實體
 const axiosClient = axios.create({
-	// baseURL: 'https://spore-easily-detective.ngrok-free.dev/api', // 原本的 ngrok 網址
-	baseURL: "http://localhost:8000/api/", // 本地端測試網址 (自己跑 backend 時用這個)
+	// 優先使用環境變數中的 VITE_API_BASE_URL，若無則回退至 localhost
+	baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8088/api/", 
 	headers: {
 		"Content-Type": "application/json",
-		"ngrok-skip-browser-warning": "true", // 繞過 ngrok 的免費警告頁面
+		"ngrok-skip-browser-warning": "true", // 繞過 ngrok/cloudflare 的警告頁面 (有些 tunnel 服務需要)
 	},
 	timeout: 10000, // 10秒超時
 });
